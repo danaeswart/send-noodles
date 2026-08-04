@@ -67,8 +67,10 @@ export default function CapturePage({ hasPhoto, photoColor, onCapture, onRequest
   return (
     <GestureDetector gesture={pan}>
       <View style={styles.page}>
-        <View style={styles.viewfinder}>
-          <Text style={styles.viewfinderLabel}>camera preview</Text>
+        <View style={styles.viewfinderWrap}>
+          <View style={styles.viewfinder}>
+            <Text style={styles.viewfinderLabel}>camera preview</Text>
+          </View>
         </View>
 
         {hasPhoto && (
@@ -94,10 +96,16 @@ export default function CapturePage({ hasPhoto, photoColor, onCapture, onRequest
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.ink, paddingHorizontal: spacing.lg, justifyContent: "space-between" },
-  viewfinder: {
+  page: { flex: 1, backgroundColor: colors.paper, paddingHorizontal: spacing.lg, justifyContent: "space-between" },
+  viewfinderWrap: {
     flex: 1,
-    marginTop: spacing.xxl,
+    justifyContent: "center",
+  },
+  viewfinder: {
+    alignSelf: "center",
+    width: "84%",
+    aspectRatio: 1,
+    backgroundColor: colors.ink,
     borderWidth: 1,
     borderColor: colors.paperDim,
     borderStyle: "dashed",
@@ -107,8 +115,8 @@ const styles = StyleSheet.create({
   viewfinderLabel: { ...type.caption, color: colors.paperDim, opacity: 0.6 },
   fallingThumb: { position: "absolute", alignSelf: "center", top: "30%", width: "70%" },
   footer: { paddingBottom: spacing.xxl, alignItems: "center" },
-  instruction: { ...type.eyebrow, color: colors.paper, marginBottom: spacing.sm },
+  instruction: { ...type.eyebrow, color: colors.ink, marginBottom: spacing.sm, textTransform: "lowercase" },
   dock: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  dockChip: { width: 20, height: 20, borderWidth: 1, borderColor: colors.paper },
-  dockLabel: { ...type.caption, color: colors.paperDim },
+  dockChip: { width: 20, height: 20, borderWidth: 1, borderColor: colors.ink },
+  dockLabel: { ...type.caption, color: colors.muted },
 });

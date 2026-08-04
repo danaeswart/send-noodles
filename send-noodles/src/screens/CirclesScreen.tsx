@@ -39,17 +39,6 @@ export default function CirclesScreen() {
         <View style={[styles.topPanel, { backgroundColor: item.color }]}> 
           <View style={styles.pageHeader}>
             <Text style={styles.circleLabel}>CIRCLE</Text>
-            <View style={styles.dotRow}>
-              {mockCircles.map((circle, dotIndex) => (
-                <View
-                  key={circle.id}
-                  style={[
-                    styles.indicatorDot,
-                    dotIndex === index && styles.indicatorDotActive,
-                  ]}
-                />
-              ))}
-            </View>
           </View>
 
           <Text style={styles.circleName}>{item.name}</Text>
@@ -85,14 +74,14 @@ export default function CirclesScreen() {
             />
             <Text style={styles.openText}>tap anywhere to open</Text>
           </View>
+        </View>
 
-          <View style={styles.hintWrap}>
-            <Text style={styles.hintText}>
-              {index === mockCircles.length - 1
-                ? "that's all your circles for today"
-                : "swipe up to view other circle challenges"}
-            </Text>
-          </View>
+        <View style={styles.pageBottomHint}>
+          <Text style={styles.pageBottomHintText}>
+            {index === mockCircles.length - 1
+              ? "that's all your circles for today"
+              : "swipe up to view more circles"}
+          </Text>
         </View>
       </View>
     </Pressable>
@@ -154,6 +143,13 @@ const styles = StyleSheet.create({
   indicatorDotActive: {
     backgroundColor: colors.paper,
   },
+  circleHint: {
+    ...type.caption,
+    color: colors.paper,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: spacing.md,
+  },
   circleName: {
     ...type.display,
     color: colors.paper,
@@ -188,6 +184,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   challengePanel: {
     padding: spacing.lg,
@@ -265,12 +262,19 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
   },
-  hintWrap: {
-    paddingVertical: spacing.xl,
+  pageBottomHint: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: spacing.xl,
     alignItems: "center",
+    paddingHorizontal: spacing.lg,
+    zIndex: 1,
   },
-  hintText: {
+  pageBottomHintText: {
     ...type.caption,
-    color: colors.paper,
+    color: colors.muted,
+    textAlign: "center",
+    letterSpacing: 1,
   },
 });
