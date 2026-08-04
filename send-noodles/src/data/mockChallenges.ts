@@ -11,6 +11,7 @@ export interface Challenge {
   endsAt: string; // ISO timestamp
   participants: ChallengeParticipant[];
   participantOverflowCount: number;
+  
   // Left undefined for now — IllustrationSlot renders a placeholder
   // until you drop a real asset in assets/illustrations and pass
   // require("../../assets/illustrations/your-file.png") here.
@@ -27,6 +28,7 @@ export const mockChallenges: Challenge[] = [
     id: "c1",
     circleId: "circle_uxgirls",
     circleName: "UX girls",
+    illustrationSource: require("../../assets/illustrations/noodleBowl.png"),
     prompt: "find and share green things.",
     endsAt: new Date(Date.now() + 4 * 60 * 60 * 1000 + 23 * 60 * 1000).toISOString(),
     participants: [

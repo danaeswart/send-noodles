@@ -84,9 +84,9 @@ export default function ChallengeCard({ challenge, index, isActive, isLast, scro
 
   return (
     <Animated.View style={[styles.card, { paddingTop: insets.top + spacing.lg }, cardStyle]}>
-      <Animated.View style={illustrationAnim}>
-        <IllustrationSlot source={challenge.illustrationSource} />
-      </Animated.View>
+      <Animated.View style={[styles.illustrationContainer, illustrationAnim]}>
+  <IllustrationSlot source={challenge.illustrationSource} />
+</Animated.View>
 
       <Animated.View style={[styles.section, eyebrowAnim]}>
         <Text style={styles.eyebrow}>Today's Challenge</Text>
@@ -159,6 +159,21 @@ const styles = StyleSheet.create({
     color: colors.ink,
     marginTop: spacing.lg,
   },
+  illustrationWrap: {
+  width: "145%",
+  alignSelf: "flex-start",
+  marginLeft: -200,
+},
+illustration: {
+  width: "100%",
+  height: 340,
+},
+illustrationContainer: {
+  height: SCREEN_HEIGHT * 0.30, // around a third of the screen
+  justifyContent: "center",
+  alignItems: "flex-end",
+  overflow: "hidden",
+},
   hintWrap: { flex: 1, justifyContent: "flex-end", alignItems: "center", paddingBottom: spacing.xxl },
   hint: { ...type.caption, color: colors.muted },
 });
