@@ -2,6 +2,7 @@
 import PagerView from "react-native-pager-view";
 import { View, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSharedValue } from "react-native-reanimated";
 
 import GalleryWallScreen from "../screens/GalleryWallScreen";
 import CirclesScreen from "../screens/CirclesScreen";
@@ -9,6 +10,7 @@ import HomeChallenges from "../screens/HomeChallenges";
 import SnapReviewScreen from "../screens/SnapReviewScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import SquareMark from "../components/SquareMark";
+import TopSwipeNavigator from "../components/TopSwipeNavigator";
 import { colors } from "../constants/theme";
 
 // The app's primary navigation model: 5 panels, one horizontal swipe
@@ -22,6 +24,7 @@ import { colors } from "../constants/theme";
 export default function SwipeNavigator() {
   const [activeIndex, setActiveIndex] = useState(2);
   const insets = useSafeAreaInsets();
+  const scrollPosition = useSharedValue(2);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.paper }}>
@@ -30,6 +33,9 @@ export default function SwipeNavigator() {
         initialPage={2}
         orientation="horizontal"
         onPageSelected={(e) => setActiveIndex(e.nativeEvent.position)}
+        onPageScroll={(e) => {
+          scrollPosition.value = e.nativeEvent.position + e.nativeEvent.offset;
+        }}
       >
         <GalleryWallScreen key="gallery" />
         <CirclesScreen key="circles" />
@@ -38,14 +44,11 @@ export default function SwipeNavigator() {
         <ProfileScreen key="profile" />
       </PagerView>
 
-      <View style={[styles.indicator, { bottom: insets.bottom + 16 }]} pointerEvents="none">
-        <SquareMark activeIndex={activeIndex} total={5} size={7} variant="onPaper" />
-      </View>
+      <TopSwipeNavigator activeIndex={activeIndex} scrollPosition={scrollPosition} topInset={insets.top} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   pagerView: { flex: 1 },
-  indicator: { position: "absolute", alignSelf: "center" },
 });
