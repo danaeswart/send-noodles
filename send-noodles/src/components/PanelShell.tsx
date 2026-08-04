@@ -5,20 +5,20 @@ import SquareMark from "./SquareMark";
 type Props = {
   eyebrow: string;
   title: string;
-  index: number; // 0 = Lobby, 1 = Gallery, 2 = Profile
+  index: number; // 0-4, position in the 5-panel swipe deck
   children?: React.ReactNode;
 };
 
-// Shared shell for the three hub panels (Lobby / Gallery / Profile).
-// Cream background with an ink corner mark — mirrors the pitch deck's
-// light content sections. Pushed screens use the inverse PushedShell
-// so leaving the hub visually signals a state change.
+// Shared shell for the swipe-deck panels that use a standard header +
+// body layout (Gallery Wall, Circles, Snap, Profile). HomeChallenges is
+// the exception — it manages its own full-bleed layout since it's a
+// vertical TikTok-style feed nested inside this horizontal deck.
 export default function PanelShell({ eyebrow, title, index, children }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>{eyebrow}</Text>
-        <SquareMark activeIndex={index} variant="onPaper" />
+        <SquareMark activeIndex={index} total={5} variant="onPaper" />
       </View>
 
       <Text style={styles.title}>{title}</Text>

@@ -3,34 +3,43 @@ import PagerView from "react-native-pager-view";
 import { View, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import TeamsLobbyScreen from "../screens/TeamsLobbyScreen";
 import GalleryWallScreen from "../screens/GalleryWallScreen";
+import CirclesScreen from "../screens/CirclesScreen";
+import HomeChallenges from "../screens/HomeChallenges";
+import SnapScreen from "../screens/SnapScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import SquareMark from "../components/SquareMark";
 import { colors } from "../constants/theme";
 
-// The app's primary navigation model: three panels, one horizontal swipe
-// container, no tab bar, no buttons. The square indicator at the bottom
-// replaces a typical dot carousel with the deck's own grid-square motif.
+// The app's primary navigation model: 5 panels, one horizontal swipe
+// container, no tab bar, no buttons.
+// Order: Gallery Wall — Circles — Home Challenges — Snap — Profile,
+// with Home Challenges as the default landing panel (index 2).
+//
+// HomeChallenges manages its own vertical TikTok-style paging inside
+// this horizontal deck — the two gesture directions don't conflict
+// since PagerView only claims horizontal pans.
 export default function SwipeNavigator() {
-  const [activeIndex, setActiveIndex] = useState(1); // starts on Gallery Wall
+  const [activeIndex, setActiveIndex] = useState(2);
   const insets = useSafeAreaInsets();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.paper }}>
       <PagerView
         style={styles.pagerView}
-        initialPage={1}
+        initialPage={2}
         orientation="horizontal"
         onPageSelected={(e) => setActiveIndex(e.nativeEvent.position)}
       >
-        <TeamsLobbyScreen key="lobby" />
         <GalleryWallScreen key="gallery" />
+        <CirclesScreen key="circles" />
+        <HomeChallenges key="home" />
+        <SnapScreen key="snap" />
         <ProfileScreen key="profile" />
       </PagerView>
 
       <View style={[styles.indicator, { bottom: insets.bottom + 16 }]} pointerEvents="none">
-        <SquareMark activeIndex={activeIndex} size={7} variant="onPaper" />
+        <SquareMark activeIndex={activeIndex} total={5} size={7} variant="onPaper" />
       </View>
     </View>
   );
