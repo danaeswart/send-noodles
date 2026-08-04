@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 import { useEffect } from "react";
 
 import { colors, spacing, type } from "../../constants/theme";
@@ -23,7 +24,7 @@ type Props = {
   index: number;
   isActive: boolean;
   isLast: boolean;
-  scrollY: Animated.SharedValue<number>;
+  scrollY: SharedValue<number>;
 };
 
 // One full-screen slide in the vertical challenge feed.

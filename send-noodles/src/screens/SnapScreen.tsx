@@ -10,7 +10,7 @@ export default function SnapScreen() {
   return (
     <PanelShell eyebrow="Capture" title="Snap" index={3}>
       <Text style={{ ...type.body, color: colors.muted }}>
-        Photo preview, description field, and circle-select will render
+        Photo , description field, and circle-select will render
         here.
       </Text>
     </PanelShell>

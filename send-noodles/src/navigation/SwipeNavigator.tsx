@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import GalleryWallScreen from "../screens/GalleryWallScreen";
 import CirclesScreen from "../screens/CirclesScreen";
 import HomeChallenges from "../screens/HomeChallenges";
-import SnapScreen from "../screens/SnapScreen";
+import SnapReviewScreen from "../screens/SnapReviewScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import SquareMark from "../components/SquareMark";
 import { colors } from "../constants/theme";
@@ -34,7 +34,7 @@ export default function SwipeNavigator() {
         <GalleryWallScreen key="gallery" />
         <CirclesScreen key="circles" />
         <HomeChallenges key="home" />
-        <SnapScreen key="snap" />
+        <SnapReviewScreen key="snap" />
         <ProfileScreen key="profile" />
       </PagerView>
 
