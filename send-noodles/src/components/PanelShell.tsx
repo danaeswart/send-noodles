@@ -10,9 +10,10 @@ type Props = {
 };
 
 // Shared shell for the swipe-deck panels that use a standard header +
-// body layout (Gallery Wall, Circles, Snap, Profile). HomeChallenges is
-// the exception — it manages its own full-bleed layout since it's a
-// vertical TikTok-style feed nested inside this horizontal deck.
+// body layout (Circles, Snap, Profile). HomeChallenges and Gallery Wall
+// are the exceptions — they manage their own full-bleed layouts (a
+// vertical TikTok-style feed, and a rotated "turn your phone sideways"
+// wall) nested inside this horizontal deck.
 export default function PanelShell({ eyebrow, title, index, children }: Props) {
   return (
     <View style={styles.container}>
