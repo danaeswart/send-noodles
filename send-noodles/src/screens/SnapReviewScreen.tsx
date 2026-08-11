@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Dimensions, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming, Easing } from "react-native-reanimated";
 
@@ -8,7 +8,6 @@ import CapturePage from "../components/snap/CapturePage";
 import SnapSendPage from "../components/snap/SnapSendPage";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-const MOCK_PHOTO_COLORS = ["#C9B79C", "#B8563A", "#3F6E66", "#D9A62E"];
 
 // Combined capture + review flow as one continuous vertical surface,
 // same interaction language as HomeChallenges/ProfileScreen — but with
@@ -18,16 +17,14 @@ const MOCK_PHOTO_COLORS = ["#C9B79C", "#B8563A", "#3F6E66", "#D9A62E"];
 // once a photo exists. From the review page, swipe UP posts, swipe
 // DOWN cancels and bounces back to the capture page.
 //
-// TODO: replace the mock color-swatch capture with a real expo-camera
-// takePictureAsync() call, and challengePrompt with the actual
-// challenge passed via navigation params instead of the first mock
-// challenge.
+// TODO: challengePrompt still comes from the first mock challenge
+// instead of the actual challenge passed via navigation params.
 export default function SnapReviewScreen() {
-  const [hasPhoto, setHasPhoto] = useState(false);
-  const [photoColor, setPhotoColor] = useState(MOCK_PHOTO_COLORS[0]);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
 
   const translateY = useSharedValue(0);
+  const hasPhoto = photoUri !== null;
 
   const goToPage = (next: 0 | 1) => {
     translateY.value = withTiming(next === 0 ? 0 : -SCREEN_HEIGHT, {
@@ -36,21 +33,19 @@ export default function SnapReviewScreen() {
     });
   };
 
-  const handleCapture = () => {
-    const nextColor = MOCK_PHOTO_COLORS[Math.floor(Math.random() * MOCK_PHOTO_COLORS.length)];
-    setPhotoColor(nextColor);
-    setHasPhoto(true);
+  const handleCapture = (uri: string) => {
+    setPhotoUri(uri);
   };
 
   const handlePost = () => {
     // TODO: upload photo + caption to Firebase Storage/Firestore here.
-    setHasPhoto(false);
+    setPhotoUri(null);
     setCaption("");
     goToPage(0);
   };
 
   const handleCancel = () => {
-    setHasPhoto(false);
+    setPhotoUri(null);
     setCaption("");
     goToPage(0);
   };
@@ -65,7 +60,7 @@ export default function SnapReviewScreen() {
         <View style={styles.pageSlot}>
           <CapturePage
             hasPhoto={hasPhoto}
-            photoColor={photoColor}
+            photoUri={photoUri}
             onCapture={handleCapture}
             onRequestReview={() => goToPage(1)}
           />
@@ -73,7 +68,7 @@ export default function SnapReviewScreen() {
         <View style={styles.pageSlot}>
           <SnapSendPage
             challengePrompt={mockChallenges[0].prompt}
-            photoColor={photoColor}
+            photoUri={photoUri}
             caption={caption}
             onChangeCaption={setCaption}
             onPost={handlePost}

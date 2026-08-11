@@ -11,7 +11,7 @@ const SWIPE_THRESHOLD = 60;
 
 type Props = {
   challengePrompt: string;
-  photoColor: string;
+  photoUri: string | null;
   caption: string;
   onChangeCaption: (text: string) => void;
   onPost: () => void;
@@ -23,7 +23,7 @@ type Props = {
 // to the capture page.
 export default function SnapSendPage({
   challengePrompt,
-  photoColor,
+  photoUri,
   caption,
   onChangeCaption,
   onPost,
@@ -51,7 +51,7 @@ export default function SnapSendPage({
         </View>
 
         <View style={styles.photoWrap}>
-          <CapturedPhotoFrame placeholderColor={photoColor} />
+          <CapturedPhotoFrame uri={photoUri ?? undefined} />
         </View>
 
         <CaptionInput value={caption} onChangeText={onChangeCaption} />

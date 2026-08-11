@@ -1,14 +1,13 @@
-import { Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
-import FramedPhoto from "../components/gallery/FramedPhoto";
-import { mockWallPhotos, WALL_SCROLL_LENGTH } from "../data/mockGallery";
+import { useCallback, useState } from "react";
+import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import * as Haptics from "expo-haptics";
+import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+
+import WallFrame, { WallPhotoPatch } from "../components/gallery/WallFrame";
+import { mockWallPhotos, WallPhoto, WALL_SCROLL_LENGTH } from "../data/mockGallery";
+import { WALL_ROTATE_DEG } from "../utils/wallRotation";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-
-// The whole wall is authored in "landscape" coordinates — as if the
-// phone were already turned on its side — then rotated to fit the
-// upright screen. +90 (clockwise) means: physically turning the phone
-// so its top edge goes to your left brings the wall upright.
-const ROTATE_DEG = 90;
 
 // A box authored at (w0 x h0) and rotated 90deg has a swapped (h0 x w0)
 // footprint. This offset re-centers it so that footprint lands exactly
@@ -17,8 +16,8 @@ function rotatedOffset(w0: number, h0: number) {
   return { left: (h0 - w0) / 2, top: (w0 - h0) / 2 };
 }
 
-// Fixed chrome (title, memories tag, swipe hint) covers exactly one
-// screen and never scrolls — only the photos underneath do.
+// Fixed chrome (title, swipe hint) covers exactly one screen and never
+// scrolls.
 const chromeOffset = rotatedOffset(SCREEN_HEIGHT, SCREEN_WIDTH);
 
 // The scrollable canvas is one long strip, WALL_SCROLL_LENGTH deep, that
@@ -26,11 +25,42 @@ const chromeOffset = rotatedOffset(SCREEN_HEIGHT, SCREEN_WIDTH);
 const canvasOffset = rotatedOffset(WALL_SCROLL_LENGTH, SCREEN_WIDTH);
 
 export default function GalleryWallScreen() {
+  const [wallPhotos, setWallPhotos] = useState<WallPhoto[]>(mockWallPhotos);
+  const [isEditing, setIsEditing] = useState(false);
+  const scrollY = useSharedValue(0);
+
+  const handleEnterEdit = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsEditing(true);
+  }, []);
+
+  const handleCommit = useCallback((id: string, patch: WallPhotoPatch) => {
+    setWallPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  }, []);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  // The Memories tag needs to both scroll with the wall *and* render
+  // above the fixed title/hint chrome — those can't both be true if it
+  // lives inside the ScrollView (whatever's in there paints below the
+  // fixed chrome layer, regardless of its own zIndex). Instead it's its
+  // own top-most overlay, manually kept in sync with scroll position.
+  const memoryScrollStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -scrollY.value }],
+  }));
+
   return (
     <View style={styles.container}>
-      <ScrollView
+      <Animated.ScrollView
         style={styles.scrollView}
+        scrollEnabled={!isEditing}
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         contentContainerStyle={{ width: SCREEN_WIDTH, height: WALL_SCROLL_LENGTH }}
       >
         <View
@@ -41,24 +71,29 @@ export default function GalleryWallScreen() {
               height: SCREEN_WIDTH,
               left: canvasOffset.left,
               top: canvasOffset.top,
-              transform: [{ rotate: `${ROTATE_DEG}deg` }],
+              transform: [{ rotate: `${WALL_ROTATE_DEG}deg` }],
             },
           ]}
         >
-          {mockWallPhotos.map((photo) => (
-            <FramedPhoto
+          {isEditing && (
+            <Pressable
+              style={styles.editDismissLayer}
+              onPress={() => setIsEditing(false)}
+            />
+          )}
+
+          {wallPhotos.map((photo) => (
+            <WallFrame
               key={photo.id}
-              frame={photo.frame}
-              size={photo.size}
-              style={{
-                position: "absolute",
-                left: photo.offset,
-                top: photo.crossFrac * SCREEN_WIDTH,
-              }}
+              photo={photo}
+              screenWidth={SCREEN_WIDTH}
+              editing={isEditing}
+              onEnterEdit={handleEnterEdit}
+              onCommit={handleCommit}
             />
           ))}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       <View style={styles.chromeLayer} pointerEvents="box-none">
         <View
@@ -70,22 +105,38 @@ export default function GalleryWallScreen() {
               height: SCREEN_WIDTH,
               left: chromeOffset.left,
               top: chromeOffset.top,
-              transform: [{ rotate: `${ROTATE_DEG}deg` }],
+              transform: [{ rotate: `${WALL_ROTATE_DEG}deg` }],
             },
           ]}
         >
           <Text style={styles.wallTitle}>the wall</Text>
-
-          <View style={styles.memoryBox}>
-            <View style={styles.memoryLabel} />
-            <Text style={styles.memoryText}>Memories</Text>
-          </View>
 
           <View style={styles.bottomBar}>
             <Text style={styles.bottomBarText}>swipe to see more →</Text>
           </View>
         </View>
       </View>
+
+      <Animated.View style={[styles.chromeLayer, styles.memoryLayer, memoryScrollStyle]} pointerEvents="box-none">
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.rotatedCanvas,
+            {
+              width: SCREEN_HEIGHT,
+              height: SCREEN_WIDTH,
+              left: chromeOffset.left,
+              top: chromeOffset.top,
+              transform: [{ rotate: `${WALL_ROTATE_DEG}deg` }],
+            },
+          ]}
+        >
+          <View style={styles.memoryBox}>
+            <View style={styles.memoryLabel} />
+            <Text style={styles.memoryText}>Memories</Text>
+          </View>
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -111,10 +162,27 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
 
+  // Sits behind the frames (rendered first) so their own gestures still
+  // win, but catches a tap anywhere else on the wall to exit edit mode.
+  editDismissLayer: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: WALL_SCROLL_LENGTH,
+    height: SCREEN_WIDTH,
+  },
+
   chromeLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10,
     elevation: 10,
+  },
+
+  // Painted after (so on top of) chromeLayer, and manually translated
+  // to track scroll position — see memoryScrollStyle above.
+  memoryLayer: {
+    zIndex: 20,
+    elevation: 20,
   },
 
   wallTitle: {
@@ -135,8 +203,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#B09157",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 5,
-    elevation: 5,
   },
 
   memoryLabel: {
