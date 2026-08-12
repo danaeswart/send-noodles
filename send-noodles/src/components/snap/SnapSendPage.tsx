@@ -9,6 +9,8 @@ import CaptionInput from "./CaptionInput";
 
 const SWIPE_THRESHOLD = 60;
 
+type SelectableCircle = { id: string; name: string };
+
 type Props = {
   challengePrompt: string;
   photoUri: string | null;
@@ -16,6 +18,9 @@ type Props = {
   onChangeCaption: (text: string) => void;
   onPost: () => void;
   onCancel: () => void;
+  circles: SelectableCircle[];
+  selectedCircleId: string | null;
+  onSelectCircle: (circleId: string) => void;
 };
 
 // Bottom page of the capture/send flow. Swipe UP posts to the selected
@@ -28,6 +33,9 @@ export default function SnapSendPage({
   onChangeCaption,
   onPost,
   onCancel,
+  circles,
+  selectedCircleId,
+  onSelectCircle,
 }: Props) {
   const pan = Gesture.Pan()
     .activeOffsetY([-10, 10])
@@ -47,7 +55,7 @@ export default function SnapSendPage({
         <Text style={styles.headline}>{challengePrompt}</Text>
 
         <View style={styles.circleWrap}>
-          <CircleSelector />
+          <CircleSelector circles={circles} selectedId={selectedCircleId} onChange={onSelectCircle} />
         </View>
 
         <View style={styles.photoWrap}>

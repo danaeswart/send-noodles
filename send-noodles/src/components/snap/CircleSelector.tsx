@@ -1,21 +1,25 @@
-﻿import { useState } from "react";
 import { Pressable, Text, View, StyleSheet } from "react-native";
 import { colors, spacing, type } from "../../constants/theme";
-import { mockCircles } from "../../data/mockCircles";
 
-type Props = { onChange?: (circleId: string) => void };
+type SelectableCircle = { id: string; name: string };
+
+type Props = {
+  circles: SelectableCircle[];
+  selectedId: string | null;
+  onChange: (circleId: string) => void;
+};
 
 // Tapping cycles through the user's circles. TEMP interaction — swap
 // for a real picker/modal once someone has more than a handful of
 // circles to choose from.
-export default function CircleSelector({ onChange }: Props) {
-  const [index, setIndex] = useState(0);
-  const circle = mockCircles[index];
+export default function CircleSelector({ circles, selectedId, onChange }: Props) {
+  const index = Math.max(0, circles.findIndex((c) => c.id === selectedId));
+  const circle = circles[index];
 
   const cycle = () => {
-    const next = (index + 1) % mockCircles.length;
-    setIndex(next);
-    onChange?.(mockCircles[next].id);
+    if (circles.length === 0) return;
+    const next = (index + 1) % circles.length;
+    onChange(circles[next].id);
   };
 
   return (
@@ -23,8 +27,8 @@ export default function CircleSelector({ onChange }: Props) {
       <View style={styles.row}>
         <Text style={styles.label}>Circle</Text>
         <Text style={styles.separator}>{"  |  "}</Text>
-        <Text style={styles.circleName}>{circle.name}</Text>
-        <Text style={styles.chevron}>{" \u2304"}</Text>
+        <Text style={styles.circleName}>{circle?.name ?? "no circles yet"}</Text>
+        <Text style={styles.chevron}>{" ⌄"}</Text>
       </View>
       <View style={styles.underline} />
     </Pressable>

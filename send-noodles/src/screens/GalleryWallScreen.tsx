@@ -4,8 +4,10 @@ import * as Haptics from "expo-haptics";
 import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 
 import WallFrame, { WallPhotoPatch } from "../components/gallery/WallFrame";
-import { mockWallPhotos, WallPhoto, WALL_SCROLL_LENGTH } from "../data/mockGallery";
+import { WALL_SCROLL_LENGTH } from "../data/mockGallery";
 import { WALL_ROTATE_DEG } from "../utils/wallRotation";
+import { useAuthUser } from "../hooks/useAuthUser";
+import { useGalleryWall } from "../hooks/useGalleryWall";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -25,7 +27,8 @@ const chromeOffset = rotatedOffset(SCREEN_HEIGHT, SCREEN_WIDTH);
 const canvasOffset = rotatedOffset(WALL_SCROLL_LENGTH, SCREEN_WIDTH);
 
 export default function GalleryWallScreen() {
-  const [wallPhotos, setWallPhotos] = useState<WallPhoto[]>(mockWallPhotos);
+  const { user } = useAuthUser();
+  const { wallPhotos, updatePosition } = useGalleryWall(user?.uid ?? null);
   const [isEditing, setIsEditing] = useState(false);
   const scrollY = useSharedValue(0);
 
@@ -34,9 +37,12 @@ export default function GalleryWallScreen() {
     setIsEditing(true);
   }, []);
 
-  const handleCommit = useCallback((id: string, patch: WallPhotoPatch) => {
-    setWallPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-  }, []);
+  const handleCommit = useCallback(
+    (id: string, patch: WallPhotoPatch) => {
+      void updatePosition(id, patch);
+    },
+    [updatePosition]
+  );
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {

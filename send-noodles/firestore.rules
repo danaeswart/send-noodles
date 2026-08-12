@@ -1,0 +1,131 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCircleMember(circleId) {
+      return isSignedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/circles/$(circleId)).data.members;
+    }
+
+    // /users/{userId} — every user can read any profile (display names
+    // are shown across circles), but only ever write their own.
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // /prompts/{promptId} — shared content bank. Any signed-in user can
+    // add prompts (there's no admin role yet — this is what the dev
+    // seed utility relies on) but never edit/delete one after the fact.
+    match /prompts/{promptId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /circles/{circleId} {
+      allow read: if isCircleMember(circleId);
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.creatorId
+        && request.auth.uid in request.resource.data.members;
+      allow update: if isCircleMember(circleId);
+      allow delete: if false;
+
+      match /challenges/{challengeId} {
+        allow read: if isCircleMember(circleId);
+
+        allow create: if isCircleMember(circleId)
+          && request.auth.uid == request.resource.data.createdBy
+          && request.auth.uid in request.resource.data.agreementStatus;
+
+        // A challenge's wager/timeline/status can only move through
+        // this state machine, and wager/timeline are frozen the moment
+        // status leaves "setup" — enforced here, not just client-side,
+        // since two members' clients could otherwise race each other.
+        allow update: if isCircleMember(circleId) && (
+          // setup: any member of this challenge may edit the
+          // wager/duration/agreementStatus (proposeWagerAndTimeline
+          // resets every member's agreement, so any key in that map
+          // may change here), and trigger the auto-lock transition
+          // (setup -> locked, or setup -> active for daily prompts,
+          // which have no separate "start" step).
+          (
+            resource.data.status == "setup" &&
+            request.auth.uid in resource.data.agreementStatus &&
+            request.resource.data.promptId == resource.data.promptId &&
+            request.resource.data.promptText == resource.data.promptText &&
+            request.resource.data.promptType == resource.data.promptType &&
+            request.resource.data.teams == resource.data.teams &&
+            request.resource.data.createdBy == resource.data.createdBy &&
+            (request.resource.data.status == "setup" ||
+             request.resource.data.status == "locked" ||
+             request.resource.data.status == "active")
+          ) ||
+          // locked -> active: starting a time-sensitive challenge's
+          // countdown. Only status + timeline.startedAt/endsAt move;
+          // the negotiated wager/duration stay frozen.
+          (
+            resource.data.status == "locked" &&
+            request.resource.data.status == "active" &&
+            request.resource.data.wager == resource.data.wager &&
+            request.resource.data.timeline.durationHours == resource.data.timeline.durationHours &&
+            request.resource.data.agreementStatus == resource.data.agreementStatus
+          ) ||
+          // active -> completed: only the status field may change —
+          // the opportunistic "nothing left to do" transition, since
+          // there's no Cloud Function to do this the instant it's true.
+          (
+            resource.data.status == "active" &&
+            request.resource.data.status == "completed" &&
+            request.resource.data.wager == resource.data.wager &&
+            request.resource.data.timeline == resource.data.timeline &&
+            request.resource.data.agreementStatus == resource.data.agreementStatus
+          )
+        );
+
+        allow delete: if false;
+
+        match /snaps/{snapId} {
+          allow read: if isCircleMember(circleId);
+
+          // Create-only, and only while the challenge is actually
+          // active. For time-sensitive challenges this also rejects
+          // any submission after the challenge's own endsAt — compared
+          // against request.time, Firestore's own server clock at
+          // write time, so it can't be spoofed by a client with a
+          // wrong local clock.
+          allow create: if isCircleMember(circleId)
+            && request.auth.uid == request.resource.data.userId
+            && get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(challengeId)).data.status == "active"
+            && (
+              get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(challengeId)).data.timeline.endsAt == null ||
+              request.time <= get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(challengeId)).data.timeline.endsAt
+            );
+
+          // Write-once, with one narrow carve-out: the owner may still
+          // reposition their own snap on their Gallery Wall afterward.
+          // Every other field (imageUrl, userId, teamId, submittedAt,
+          // frameId) is immutable once created.
+          allow update: if isSignedIn()
+            && request.auth.uid == resource.data.userId
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["positionIndex", "wallOffset", "wallCrossFrac", "wallSize"]);
+
+          allow delete: if false;
+        }
+
+        match /scoringEvents/{eventId} {
+          allow read: if isCircleMember(circleId);
+          allow create: if isCircleMember(circleId) && request.auth.uid == request.resource.data.userId;
+          allow update, delete: if false;
+        }
+      }
+    }
+  }
+}

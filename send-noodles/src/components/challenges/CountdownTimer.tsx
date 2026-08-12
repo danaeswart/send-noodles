@@ -1,9 +1,9 @@
-﻿import { useEffect, useState } from "react";
-import { Text, StyleSheet } from "react-native";
+﻿import { Text, StyleSheet } from "react-native";
 import { colors, type } from "../../constants/theme";
+import { useCountdown, type CountdownTarget } from "../../hooks/useCountdown";
 
 type Props = {
-  endsAt: string;
+  endsAt: CountdownTarget;
 };
 
 function formatRemaining(ms: number) {
@@ -16,20 +16,9 @@ function formatRemaining(ms: number) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-// Plain setInterval, deliberately not Reanimated-driven — this needs to
-// track real wall-clock time against endsAt, not frame time, so it stays
-// accurate even if the app is backgrounded and resumed.
 export default function CountdownTimer({ endsAt }: Props) {
-  const [remaining, setRemaining] = useState(() => new Date(endsAt).getTime() - Date.now());
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setRemaining(new Date(endsAt).getTime() - Date.now());
-    }, 1000);
-    return () => clearInterval(id);
-  }, [endsAt]);
-
-  return <Text style={styles.timer}>{formatRemaining(remaining)}</Text>;
+  const { remainingMs } = useCountdown(endsAt);
+  return <Text style={styles.timer}>{formatRemaining(remainingMs ?? 0)}</Text>;
 }
 
 const styles = StyleSheet.create({
