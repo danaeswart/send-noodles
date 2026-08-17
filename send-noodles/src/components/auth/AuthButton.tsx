@@ -1,16 +1,17 @@
-import { Pressable, Text, StyleSheet, ViewStyle } from "react-native";
+import { Pressable, Text, StyleSheet, TextStyle, ViewStyle } from "react-native";
 import { colors, spacing, type } from "../../constants/theme";
 
 type Props = {
   label: string;
   onPress?: () => void;
   style?: ViewStyle;
+  textStyle?: TextStyle;
 };
 
-export default function AuthButton({ label, onPress, style }: Props) {
+export default function AuthButton({ label, onPress, style, textStyle }: Props) {
   return (
     <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed, style]} onPress={onPress}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, textStyle]}>{label}</Text>
     </Pressable>
   );
 }

@@ -6,7 +6,7 @@ type Props = {
   value: string;
   onChangeText: (text: string) => void;
   style?: ViewStyle;
-} & Pick<TextInputProps, "placeholder" | "secureTextEntry" | "keyboardType" | "autoCapitalize" | "textContentType" | "autoComplete">;
+} & Pick<TextInputProps, "placeholder" | "secureTextEntry" | "keyboardType" | "autoCapitalize" | "textContentType" | "autoComplete" | "maxLength">;
 
 // Same underline-input treatment as CaptionInput on the Snap screen —
 // reused here as a shared field so Login/SignUp don't redefine it.

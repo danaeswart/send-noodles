@@ -104,12 +104,23 @@ export type GallerySnap = WithId<SnapDoc> & { ref: DocumentReference };
 // backs the personal Gallery Wall. Requires a Firestore index on the
 // "snaps" collection group for the "userId" field; Firestore will
 // throw with a direct console link to create it the first time this
-// runs against a project that doesn't have it yet.
+// runs against a project that doesn't have it yet. An error handler is
+// required here (not just the success callback) — without one, that
+// throw is uncaught and trips React Native's red-screen LogBox instead
+// of just leaving the Gallery Wall empty until the index finishes
+// building.
 export function subscribeToUserSnaps(userId: string, callback: (snaps: GallerySnap[]) => void): Unsubscribe {
   const q = query(collectionGroup(firestore, "snaps"), where("userId", "==", userId));
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ref: d.ref, ...(d.data() as SnapDoc) })));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ref: d.ref, ...(d.data() as SnapDoc) })));
+    },
+    (error) => {
+      console.warn("[Gallery Wall] couldn't load snaps — Firestore index may still be building:", error.message);
+      callback([]);
+    }
+  );
 }
 
 export type WallPlacementPatch = Partial<Pick<SnapDoc, "positionIndex" | "wallOffset" | "wallCrossFrac" | "wallSize">>;

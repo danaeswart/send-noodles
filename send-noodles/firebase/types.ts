@@ -23,6 +23,7 @@ export interface CircleDoc {
   members: string[];
   usedPrompts: string[];
   activeChallengeId: string | null;
+  joinCode: string;
 }
 
 export type PromptType = "daily" | "time_sensitive";

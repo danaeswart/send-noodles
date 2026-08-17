@@ -1,9 +1,9 @@
-import { useEffect } from "react";
-import { Image, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Image, ScrollView, Share, StyleSheet, Text, View, Pressable } from "react-native";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import AvatarCluster from "../components/challenges/AvatarCluster";
 import { colors, spacing, type } from "../constants/theme";
-import type { ChallengeParticipant } from "../data/mockChallenges";
 import { RootStackParamList } from "../navigation/types";
 import { useAuthUser } from "../hooks/useAuthUser";
 import { useActiveChallenge } from "../hooks/useActiveChallenge";
@@ -11,27 +11,23 @@ import { useChallengeAgreement } from "../hooks/useChallengeAgreement";
 import { useScoreboard } from "../hooks/useScoreboard";
 import { useChallengeSnaps } from "../hooks/useChallengeSnaps";
 import { checkAndCompleteChallengeIfDone } from "../../firebase/challenges";
-
-// No display-name/avatar lookups are wired up yet, so member avatars
-// fall back to the first two characters of their userId — swap for a
-// real /users/{id} profile fetch once that's needed elsewhere too.
-function toParticipants(userIds: string[]): ChallengeParticipant[] {
-  return userIds.map((id) => ({ id, initials: id.slice(0, 2).toUpperCase() }));
-}
+import { removeMember } from "../../firebase/circles";
+import { toParticipants } from "../utils/participants";
 
 export default function CircleDetailScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "CircleDetail">>();
   const circleId = route.params?.circleId ?? null;
 
   const { user } = useAuthUser();
   const userId = user?.uid ?? null;
 
-  const { circle, canPullNext, pullNextChallenge, startTimer, actionError } = useActiveChallenge(circleId, userId);
+  const { circle, canProposeChallenge, startTimer, actionError } = useActiveChallenge(circleId, userId);
   const challengeId = circle?.activeChallengeId ?? null;
   const { challenge, myAgreement, canEdit, agree, decline } = useChallengeAgreement(circleId, challengeId, userId);
   const { totals, submittedUserIds } = useScoreboard(circleId, challengeId);
   const snaps = useChallengeSnaps(circleId, challengeId);
+  const [memberActionError, setMemberActionError] = useState<string | null>(null);
 
   // Opportunistic "completed" transition — there's no Cloud Function to
   // do this the instant it becomes true on the Spark plan, so whichever
@@ -70,8 +66,8 @@ export default function CircleDetailScreen() {
   const teamBLeading = teamBScore > teamAScore;
 
   const canStartTimer = challenge?.status === "locked" && challenge.promptType === "time_sensitive";
-  const ctaLabel = canPullNext
-    ? "+ pull next challenge"
+  const ctaLabel = canProposeChallenge
+    ? "+ create challenge"
     : canStartTimer
       ? "▶ start challenge"
       : challenge?.status === "setup"
@@ -79,7 +75,7 @@ export default function CircleDetailScreen() {
         : "challenge in progress";
 
   const handleCtaPress = () => {
-    if (canPullNext) void pullNextChallenge();
+    if (canProposeChallenge) navigation.navigate("ChallengeSetup", { circleId });
     else if (canStartTimer) void startTimer();
   };
 
@@ -87,6 +83,29 @@ export default function CircleDetailScreen() {
     if (!canEdit) return;
     if (myAgreement === "agreed") void decline();
     else void agree();
+  };
+
+  const isCreator = circle.creatorId === userId;
+
+  const handleShareCode = () => {
+    void Share.share({ message: `Join my circle "${circle.name}" on Send Noodles — use code ${circle.joinCode}` });
+  };
+
+  const handleRemoveMember = (memberId: string) => {
+    Alert.alert("Remove member?", "They'll need a new invite code to rejoin the circle.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => {
+          if (!circleId || !userId) return;
+          setMemberActionError(null);
+          removeMember(circleId, userId, memberId).catch((err) => {
+            setMemberActionError(err instanceof Error ? err.message : "Couldn't remove that member.");
+          });
+        },
+      },
+    ]);
   };
 
   return (
@@ -111,6 +130,34 @@ export default function CircleDetailScreen() {
 
         <View style={styles.divider} />
 
+        {isCreator && (
+          <>
+            <Text style={styles.sectionLabel}>circle code</Text>
+            <View style={styles.codeRow}>
+              <Text style={styles.codeText}>{circle.joinCode}</Text>
+              <Pressable onPress={handleShareCode} hitSlop={8}>
+                <Text style={styles.shareText}>share →</Text>
+              </Pressable>
+            </View>
+            <View style={styles.divider} />
+          </>
+        )}
+
+        <Text style={styles.sectionLabel}>members</Text>
+        {circle.members.map((memberId) => (
+          <View key={memberId} style={styles.memberRow}>
+            <Text style={styles.memberName}>{memberId === userId ? "you" : memberId.slice(0, 6)}</Text>
+            {isCreator && memberId !== circle.creatorId && (
+              <Pressable onPress={() => handleRemoveMember(memberId)} hitSlop={8}>
+                <Text style={styles.removeText}>remove</Text>
+              </Pressable>
+            )}
+          </View>
+        ))}
+        {memberActionError && <Text style={styles.errorText}>{memberActionError}</Text>}
+
+        <View style={styles.divider} />
+
         <Text style={styles.sectionLabel}>current challenge</Text>
         <Text style={styles.challengeTitle}>{challenge?.promptText ?? "no active challenge yet"}</Text>
 
@@ -130,35 +177,39 @@ export default function CircleDetailScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.divider} />
+        {challenge && (
+          <>
+            <View style={styles.divider} />
 
-        <View style={styles.battleHeaderRow}>
-          <Text style={styles.sectionLabel}>the battle</Text>
-          <Text style={styles.leadingLabel}>leading</Text>
-        </View>
-
-        <View style={styles.battleRow}>
-          <View style={styles.battleBlock}>
-            <Text style={[styles.teamLabel, teamALeading && styles.leadingTeam]}>{teamAId.replace("_", " ")}</Text>
-            <Text style={[styles.battleScore, teamALeading && styles.leadingScore]}>{teamAScore}</Text>
-            <View style={styles.teamSubRow}>
-              <AvatarCluster participants={toParticipants(teamAMembers)} overflowCount={0} />
-              <Text style={[styles.teamCaption, teamALeading && styles.leadingTeam]}>{teamAId.replace("_", " ")}</Text>
+            <View style={styles.battleHeaderRow}>
+              <Text style={styles.sectionLabel}>the battle</Text>
+              <Text style={styles.leadingLabel}>leading</Text>
             </View>
-          </View>
-          <View style={styles.battleBlock}>
-            <Text style={[styles.teamLabel, teamBLeading && styles.leadingTeam]}>{teamBId.replace("_", " ")}</Text>
-            <Text style={[styles.battleScore, teamBLeading && styles.leadingScore]}>{teamBScore}</Text>
-            <View style={styles.teamSubRow}>
-              <AvatarCluster participants={toParticipants(teamBMembers)} overflowCount={0} />
-              <Text style={[styles.teamCaption, teamBLeading && styles.leadingTeam]}>{teamBId.replace("_", " ")}</Text>
-            </View>
-          </View>
-        </View>
 
-        <View style={styles.lineChartPlaceholder}>
-          <Text style={styles.chartLabel}>chart placeholder</Text>
-        </View>
+            <View style={styles.battleRow}>
+              <View style={styles.battleBlock}>
+                <Text style={[styles.teamLabel, teamALeading && styles.leadingTeam]}>{teamAId.replace("_", " ")}</Text>
+                <Text style={[styles.battleScore, teamALeading && styles.leadingScore]}>{teamAScore}</Text>
+                <View style={styles.teamSubRow}>
+                  <AvatarCluster participants={toParticipants(teamAMembers)} overflowCount={0} />
+                  <Text style={[styles.teamCaption, teamALeading && styles.leadingTeam]}>{teamAId.replace("_", " ")}</Text>
+                </View>
+              </View>
+              <View style={styles.battleBlock}>
+                <Text style={[styles.teamLabel, teamBLeading && styles.leadingTeam]}>{teamBId.replace("_", " ")}</Text>
+                <Text style={[styles.battleScore, teamBLeading && styles.leadingScore]}>{teamBScore}</Text>
+                <View style={styles.teamSubRow}>
+                  <AvatarCluster participants={toParticipants(teamBMembers)} overflowCount={0} />
+                  <Text style={[styles.teamCaption, teamBLeading && styles.leadingTeam]}>{teamBId.replace("_", " ")}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.lineChartPlaceholder}>
+              <Text style={styles.chartLabel}>chart placeholder</Text>
+            </View>
+          </>
+        )}
 
         <View style={styles.divider} />
 
@@ -177,7 +228,7 @@ export default function CircleDetailScreen() {
 
         <View style={styles.divider} />
 
-        <Pressable onPress={handleCtaPress} disabled={!canPullNext && !canStartTimer}>
+        <Pressable onPress={handleCtaPress} disabled={!canProposeChallenge && !canStartTimer}>
           <Text style={styles.ctaText}>{ctaLabel}</Text>
         </Pressable>
         {actionError && <Text style={styles.errorText}>{actionError}</Text>}
@@ -200,6 +251,12 @@ const styles = StyleSheet.create({
   memberCount: { ...type.caption, color: colors.muted, marginLeft: spacing.sm },
   divider: { height: 1, backgroundColor: colors.line, marginVertical: spacing.lg },
   sectionLabel: { ...type.eyebrow, color: colors.muted, letterSpacing: 2, marginBottom: spacing.sm },
+  codeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  codeText: { ...type.display, color: colors.ink, fontSize: 32, letterSpacing: 4 },
+  shareText: { ...type.caption, color: colors.accent, textTransform: "uppercase", letterSpacing: 1 },
+  memberRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: spacing.xs },
+  memberName: { ...type.body, color: colors.ink },
+  removeText: { ...type.caption, color: colors.alert, textTransform: "uppercase", letterSpacing: 1 },
   challengeTitle: { ...type.serifDisplay, color: colors.ink, fontSize: 34, lineHeight: 42, marginBottom: spacing.lg },
   statsGrid: { flexDirection: "row", justifyContent: "space-between", gap: spacing.lg },
   statCard: { flex: 1, gap: spacing.xs },

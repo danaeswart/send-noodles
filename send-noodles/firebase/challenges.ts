@@ -1,4 +1,5 @@
 import {
+  arrayUnion,
   collection,
   doc,
   getDoc,
@@ -16,7 +17,7 @@ import {
 
 import { firestore } from "./firebaseConfig";
 import { fetchRandomUnusedPrompt } from "./prompts";
-import type { AgreementState, ChallengeDoc, CircleDoc, PromptDoc, ScoringEventDoc, WithId } from "./types";
+import type { AgreementState, ChallengeDoc, CircleDoc, PromptDoc, PromptType, ScoringEventDoc, WithId } from "./types";
 
 function circleRef(circleId: string) {
   return doc(firestore, "circles", circleId);
@@ -92,31 +93,32 @@ export async function addScoringEvent(
   await addDoc(scoringEventsCol(circleId, challengeId), event);
 }
 
-// Splits circle members evenly into two teams. No team-picker UI exists
-// yet, so this is a simple, deterministic default (alternating members
-// into team_1/team_2) — swap for a real assignment flow later if one
-// gets built; the rest of the agreement/scoring logic doesn't care how
-// `teams` was populated.
-function splitIntoTeams(members: string[]): Record<string, string[]> {
-  const teams: Record<string, string[]> = { team_1: [], team_2: [] };
-  members.forEach((memberId, index) => {
-    const teamKey = index % 2 === 0 ? "team_1" : "team_2";
-    teams[teamKey].push(memberId);
-  });
-  return teams;
-}
-
 function initialAgreementStatus(members: string[]): ChallengeDoc["agreementStatus"] {
   return Object.fromEntries(members.map((id) => [id, { status: "pending" as AgreementState, timestamp: null }]));
 }
 
-// Pulls a new random, not-yet-used daily prompt for this circle, creates
-// its challenge subdocument in "setup" state, and points the circle's
-// activeChallengeId at it. Only allowed when there's no active challenge
-// yet, or the current one has already reached "completed" — callers
-// should check that first (see useActiveChallenge) so the UI can show a
-// sensible message instead of a thrown error in the common case.
-export async function pullNextDailyChallenge(circleId: string, userId: string): Promise<string> {
+// Any circle member can propose a challenge. The prompt itself is picked
+// by the system at random — coin-flipped between a "daily" (no timer)
+// and "time_sensitive" (timed) prompt, falling back to whichever type
+// still has unused prompts if the first pick is exhausted — while the
+// proposer sets the terms (duration + prize). The proposer is
+// auto-agreed and immediately placed on a random team, same as anyone
+// else who accepts via setMemberAgreement; everyone else starts
+// "pending" with no team yet. Only allowed when there's no active
+// challenge, or the current one has already reached "completed" —
+// callers should check that first (see useActiveChallenge) so the UI
+// can show a sensible message instead of a thrown error in the common
+// case.
+export async function proposeChallenge(
+  circleId: string,
+  userId: string,
+  wager: string,
+  durationHours: number
+): Promise<string> {
+  const trimmedWager = wager.trim();
+  if (!trimmedWager) throw new Error("Give the challenge a prize.");
+  if (!Number.isFinite(durationHours) || durationHours <= 0) throw new Error("Enter a valid duration.");
+
   const circleSnap = await getDoc(circleRef(circleId));
   if (!circleSnap.exists()) throw new Error("Circle not found.");
   const circle = circleSnap.data() as CircleDoc;
@@ -129,10 +131,15 @@ export async function pullNextDailyChallenge(circleId: string, userId: string): 
     }
   }
 
-  const prompt = await fetchRandomUnusedPrompt("daily", circle.usedPrompts);
-  if (!prompt) throw new Error("No more daily prompts left for this circle.");
+  const firstType: PromptType = Math.random() < 0.5 ? "daily" : "time_sensitive";
+  const secondType: PromptType = firstType === "daily" ? "time_sensitive" : "daily";
+  const prompt =
+    (await fetchRandomUnusedPrompt(firstType, circle.usedPrompts)) ??
+    (await fetchRandomUnusedPrompt(secondType, circle.usedPrompts));
+  if (!prompt) throw new Error("No prompts left for this circle.");
 
   const newChallengeRef = doc(challengesCol(circleId));
+  const proposerTeam = Math.random() < 0.5 ? "team_1" : "team_2";
 
   await runTransaction(firestore, async (transaction) => {
     const freshCircleSnap = await transaction.get(circleRef(circleId));
@@ -141,18 +148,21 @@ export async function pullNextDailyChallenge(circleId: string, userId: string): 
       throw new Error("That prompt was just used by someone else — try again.");
     }
 
+    const agreementStatus = initialAgreementStatus(freshCircle.members);
+    agreementStatus[userId] = { status: "agreed", timestamp: serverTimestamp() as unknown as Timestamp };
+
+    const teams: Record<string, string[]> = { team_1: [], team_2: [] };
+    teams[proposerTeam] = [userId];
+
     const challenge: ChallengeDoc = {
       promptId: prompt.id,
       promptText: prompt.promptText,
-      promptType: "daily",
-      // Sensible defaults so the Lobby has something to agree to right
-      // away — any member can still edit both via proposeWagerAndTimeline
-      // while status is "setup".
-      wager: "loser buys a round of drinks",
-      timeline: { durationHours: 24, startedAt: null, endsAt: null },
+      promptType: prompt.type,
+      wager: trimmedWager,
+      timeline: { durationHours, startedAt: null, endsAt: null },
       status: "setup",
-      teams: splitIntoTeams(freshCircle.members),
-      agreementStatus: initialAgreementStatus(freshCircle.members),
+      teams,
+      agreementStatus,
       createdBy: userId,
       createdAt: serverTimestamp() as unknown as Timestamp,
     };
@@ -200,22 +210,39 @@ export async function proposeWagerAndTimeline(
   });
 }
 
+// Setting "agreed" also drops the member onto a random team, the first
+// time only — re-agreeing after a decline keeps whichever team they
+// already landed on rather than reshuffling. Runs as a transaction (read
+// current teams, then write) since the random pick depends on the
+// member not already being assigned.
 export async function setMemberAgreement(
   circleId: string,
   challengeId: string,
   userId: string,
   status: Extract<AgreementState, "agreed" | "declined">
 ) {
-  const snap = await getDoc(challengeRef(circleId, challengeId));
-  if (!snap.exists()) throw new Error("Challenge not found.");
-  const challenge = snap.data() as ChallengeDoc;
-  if (challenge.status !== "setup") {
-    throw new Error("This challenge's wager is already locked in.");
-  }
+  await runTransaction(firestore, async (transaction) => {
+    const snap = await transaction.get(challengeRef(circleId, challengeId));
+    if (!snap.exists()) throw new Error("Challenge not found.");
+    const challenge = snap.data() as ChallengeDoc;
+    if (challenge.status !== "setup") {
+      throw new Error("This challenge's wager is already locked in.");
+    }
 
-  await updateDoc(challengeRef(circleId, challengeId), {
-    [`agreementStatus.${userId}.status`]: status,
-    [`agreementStatus.${userId}.timestamp`]: serverTimestamp(),
+    const update: Record<string, unknown> = {
+      [`agreementStatus.${userId}.status`]: status,
+      [`agreementStatus.${userId}.timestamp`]: serverTimestamp(),
+    };
+
+    if (status === "agreed") {
+      const alreadyOnTeam = Object.values(challenge.teams).some((members) => members.includes(userId));
+      if (!alreadyOnTeam) {
+        const teamKey = Math.random() < 0.5 ? "team_1" : "team_2";
+        update[`teams.${teamKey}`] = arrayUnion(userId);
+      }
+    }
+
+    transaction.update(challengeRef(circleId, challengeId), update);
   });
 }
 

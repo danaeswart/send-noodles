@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { pullNextDailyChallenge, startTimeSensitiveChallenge, subscribeToChallenge, subscribeToCircle } from "../../firebase/challenges";
+import { startTimeSensitiveChallenge, subscribeToChallenge, subscribeToCircle } from "../../firebase/challenges";
 import type { ChallengeDoc, CircleDoc, WithId } from "../../firebase/types";
 
 // Tracks a circle's single activeChallengeId and keeps its challenge doc
-// live alongside it. Exposes the two client-triggered transitions the
-// brief calls for on the Spark (no Cloud Functions) plan: pulling the
-// next daily prompt once the previous challenge is done, and starting a
+// live alongside it. Exposes the client-triggered transition the brief
+// calls for on the Spark (no Cloud Functions) plan: starting a
 // time-sensitive challenge's countdown once its wager is locked.
+// Proposing a new challenge itself happens on a separate screen
+// (ChallengeSetupScreen) since it needs user-entered terms — this hook
+// just tells the caller whether that's currently allowed.
 export function useActiveChallenge(circleId: string | null, currentUserId: string | null) {
   const [circle, setCircle] = useState<WithId<CircleDoc> | null>(null);
   const [challenge, setChallenge] = useState<WithId<ChallengeDoc> | null>(null);
@@ -29,17 +31,7 @@ export function useActiveChallenge(circleId: string | null, currentUserId: strin
     return subscribeToChallenge(circleId, circle.activeChallengeId, setChallenge);
   }, [circleId, circle?.activeChallengeId]);
 
-  const canPullNext = !!circleId && (!circle?.activeChallengeId || challenge?.status === "completed");
-
-  const pullNextChallenge = useCallback(async () => {
-    if (!circleId || !currentUserId) return;
-    setActionError(null);
-    try {
-      await pullNextDailyChallenge(circleId, currentUserId);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Couldn't pull the next challenge.");
-    }
-  }, [circleId, currentUserId]);
+  const canProposeChallenge = !!circleId && (!circle?.activeChallengeId || challenge?.status === "completed");
 
   const startTimer = useCallback(async () => {
     if (!circleId || !challenge) return;
@@ -51,5 +43,5 @@ export function useActiveChallenge(circleId: string | null, currentUserId: strin
     }
   }, [circleId, challenge]);
 
-  return { circle, challenge, canPullNext, pullNextChallenge, startTimer, actionError };
+  return { circle, challenge, canProposeChallenge, startTimer, actionError };
 }

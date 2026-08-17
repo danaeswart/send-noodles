@@ -12,7 +12,7 @@ import ActionRow from "../../components/profile/ActionRow";
 import AvatarStyleRow from "../../components/profile/AvatarStyleRow";
 import { RootStackParamList } from "../../navigation/types";
 import { useAuthUser } from "../../hooks/useAuthUser";
-import { seedDevData } from "../../../firebase/seed";
+import { seedDevData, seedPrompts } from "../../../firebase/seed";
 import { logOut } from "../../../firebase/auth";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -28,6 +28,8 @@ export default function ProfileSettingsPage() {
   const [preferences, setPreferences] = useState(mockProfile.settings.preferences);
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
+  const [isSeedingPrompts, setIsSeedingPrompts] = useState(false);
+  const [promptSeedResult, setPromptSeedResult] = useState<string | null>(null);
 
   const togglePreference = (id: string) => {
     setPreferences((prev) => prev.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p)));
@@ -44,6 +46,20 @@ export default function ProfileSettingsPage() {
       setSeedError(err instanceof Error ? err.message : "Couldn't seed dev data.");
     } finally {
       setIsSeeding(false);
+    }
+  };
+
+  const handleSeedPrompts = async () => {
+    if (isSeedingPrompts) return;
+    setIsSeedingPrompts(true);
+    setPromptSeedResult(null);
+    try {
+      const { created, skipped } = await seedPrompts();
+      setPromptSeedResult(`done — ${created} added, ${skipped} already there`);
+    } catch (err) {
+      setPromptSeedResult(err instanceof Error ? err.message : "Couldn't seed prompts.");
+    } finally {
+      setIsSeedingPrompts(false);
     }
   };
 
@@ -97,6 +113,11 @@ export default function ProfileSettingsPage() {
             onPress={handleSeedDevData}
           />
           {seedError && <Text style={styles.seedError}>{seedError}</Text>}
+          <ActionRow
+            label={isSeedingPrompts ? "seeding prompts…" : "seed prompt bank"}
+            onPress={handleSeedPrompts}
+          />
+          {promptSeedResult && <Text style={styles.seedResult}>{promptSeedResult}</Text>}
         </>
       )}
     </ScrollView>
@@ -111,4 +132,5 @@ const styles = StyleSheet.create({
   subLabel: { ...type.eyebrow, fontSize: 10, color: colors.muted, marginBottom: spacing.sm },
   avatarRowWrap: { marginBottom: spacing.lg },
   seedError: { ...type.caption, color: colors.alert, marginTop: spacing.sm },
+  seedResult: { ...type.caption, color: colors.muted, marginTop: spacing.sm },
 });

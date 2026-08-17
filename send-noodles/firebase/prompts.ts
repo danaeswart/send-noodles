@@ -1,11 +1,20 @@
-import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 
 import { firestore } from "./firebaseConfig";
 import type { PromptDoc, PromptType, WithId } from "./types";
 
-export async function createPrompt(prompt: PromptDoc): Promise<string> {
-  const ref = await addDoc(collection(firestore, "prompts"), prompt);
-  return ref.id;
+// Writes a prompt under a specific, human-readable doc id (e.g.
+// "daily_green") instead of an auto-generated one, so the prompt bank
+// in seed.ts stays legible in the Firebase console. Skips the write if
+// a prompt with that id already exists: firestore.rules allows create
+// on /prompts but not update, so re-seeding after adding new entries to
+// the bank must not attempt to rewrite ones that already landed.
+export async function createPromptWithId(id: string, prompt: PromptDoc): Promise<"created" | "skipped"> {
+  const ref = doc(firestore, "prompts", id);
+  const existing = await getDoc(ref);
+  if (existing.exists()) return "skipped";
+  await setDoc(ref, prompt);
+  return "created";
 }
 
 // Firestore has no "not in this (possibly long) array" query, so this
