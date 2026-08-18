@@ -1,8 +1,12 @@
+
+ ![Send Noodles banner](/send-noodles/readme-assets/noodle.png)
+
 # Send Noodles
 
-A social app for small friend groups ("circles") to complete daily challenges, snap photos of themselves doing it, and collect the results on a shared gallery wall — built with Expo / React Native.
+A social app for small friend groups, called “circles”, designed to pull you out of the constant noise and into the moment. Daily challenges give you a reason to pause, be present, and experience something with your friends. Snap a photo, share the moment, challenge your friends, and build your shared gallery wall together.
 
- ![Send Noodles banner](./readme-assets/noodle.png)
+Complete challenges to unlock frames, send noodles, collect memories, and discover more ways to connect. It is about taking a moment away from everything trying to get your attention and actually being there for it.
+
 
 
 ##  Features
@@ -65,7 +69,7 @@ send-noodles/
 - The [Expo Go](https://expo.dev/go) app on your phone (easiest way to run it), **or** Android Studio / Xcode set up for a simulator
 - A Firebase project and a Cloudinary account if you want your own backend (see [Backend Setup](#-backend-setup) below) — the repo currently ships with a working shared project's config, so this is optional to get started
 
-## 🚀 Getting Started
+##  Getting Started
 
 ```bash
 # 1. Install dependencies
