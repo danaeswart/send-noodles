@@ -1,6 +1,9 @@
 ﻿export interface ChallengeParticipant {
   id: string;
   initials: string;
+  // A require()'d image (see src/constants/avatarFaces.ts's faceSourceForId).
+  // When present, AvatarCluster renders this instead of the initials fill.
+  avatarSource?: number;
 }
 
 export interface Challenge {

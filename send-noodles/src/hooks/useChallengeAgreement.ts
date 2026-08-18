@@ -15,6 +15,7 @@ import type { ChallengeDoc, WithId } from "../../firebase/types";
 // UI needs to call.
 export function useChallengeAgreement(circleId: string | null, challengeId: string | null, currentUserId: string | null) {
   const [challenge, setChallenge] = useState<WithId<ChallengeDoc> | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!circleId || !challengeId) {
@@ -39,17 +40,27 @@ export function useChallengeAgreement(circleId: string | null, challengeId: stri
 
   const agree = useCallback(async () => {
     if (!circleId || !challengeId || !currentUserId) return;
-    await setMemberAgreement(circleId, challengeId, currentUserId, "agreed");
+    setActionError(null);
+    try {
+      await setMemberAgreement(circleId, challengeId, currentUserId, "agreed");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Couldn't join the challenge.");
+    }
   }, [circleId, challengeId, currentUserId]);
 
   const decline = useCallback(async () => {
     if (!circleId || !challengeId || !currentUserId) return;
-    await setMemberAgreement(circleId, challengeId, currentUserId, "declined");
+    setActionError(null);
+    try {
+      await setMemberAgreement(circleId, challengeId, currentUserId, "declined");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Couldn't decline the challenge.");
+    }
   }, [circleId, challengeId, currentUserId]);
 
   const myAgreement = currentUserId ? challenge?.agreementStatus[currentUserId]?.status ?? "pending" : "pending";
   const canEdit = challenge?.status === "setup";
   const allAgreed = !!challenge && Object.values(challenge.agreementStatus).every((a) => a.status === "agreed");
 
-  return { challenge, myAgreement, canEdit, allAgreed, proposeWager, agree, decline };
+  return { challenge, myAgreement, canEdit, allAgreed, proposeWager, agree, decline, actionError };
 }

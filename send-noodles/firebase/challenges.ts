@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -17,7 +18,16 @@ import {
 
 import { firestore } from "./firebaseConfig";
 import { fetchRandomUnusedPrompt } from "./prompts";
-import type { AgreementState, ChallengeDoc, CircleDoc, PromptDoc, PromptType, ScoringEventDoc, WithId } from "./types";
+import type {
+  AgreementState,
+  ChallengeDoc,
+  CircleDoc,
+  PromptDoc,
+  PromptType,
+  ScoringEventDoc,
+  UserProfile,
+  WithId,
+} from "./types";
 
 function circleRef(circleId: string) {
   return doc(firestore, "circles", circleId);
@@ -97,6 +107,16 @@ function initialAgreementStatus(members: string[]): ChallengeDoc["agreementStatu
   return Object.fromEntries(members.map((id) => [id, { status: "pending" as AgreementState, timestamp: null }]));
 }
 
+// Balances teams as people join rather than coin-flipping every time —
+// whichever team currently has fewer members gets the next one; a tie
+// (including the very first join, 0 vs 0) is broken randomly.
+function pickBalancedTeam(teams: Record<string, string[]>): string {
+  const entries = Object.entries(teams);
+  const minSize = Math.min(...entries.map(([, members]) => members.length));
+  const smallestTeamIds = entries.filter(([, members]) => members.length === minSize).map(([teamId]) => teamId);
+  return smallestTeamIds[Math.floor(Math.random() * smallestTeamIds.length)];
+}
+
 // Any circle member can propose a challenge. The prompt itself is picked
 // by the system at random — coin-flipped between a "daily" (no timer)
 // and "time_sensitive" (timed) prompt, falling back to whichever type
@@ -139,7 +159,7 @@ export async function proposeChallenge(
   if (!prompt) throw new Error("No prompts left for this circle.");
 
   const newChallengeRef = doc(challengesCol(circleId));
-  const proposerTeam = Math.random() < 0.5 ? "team_1" : "team_2";
+  const proposerTeam = pickBalancedTeam({ team_1: [], team_2: [] });
 
   await runTransaction(firestore, async (transaction) => {
     const freshCircleSnap = await transaction.get(circleRef(circleId));
@@ -210,11 +230,11 @@ export async function proposeWagerAndTimeline(
   });
 }
 
-// Setting "agreed" also drops the member onto a random team, the first
-// time only — re-agreeing after a decline keeps whichever team they
-// already landed on rather than reshuffling. Runs as a transaction (read
-// current teams, then write) since the random pick depends on the
-// member not already being assigned.
+// Setting "agreed" also drops the member onto whichever team is
+// currently smaller (see pickBalancedTeam), the first time only —
+// re-agreeing after a decline keeps whichever team they already landed
+// on rather than reshuffling. Runs as a transaction (read current teams,
+// then write) since the pick depends on each team's current size.
 export async function setMemberAgreement(
   circleId: string,
   challengeId: string,
@@ -237,7 +257,7 @@ export async function setMemberAgreement(
     if (status === "agreed") {
       const alreadyOnTeam = Object.values(challenge.teams).some((members) => members.includes(userId));
       if (!alreadyOnTeam) {
-        const teamKey = Math.random() < 0.5 ? "team_1" : "team_2";
+        const teamKey = pickBalancedTeam(challenge.teams);
         update[`teams.${teamKey}`] = arrayUnion(userId);
       }
     }
@@ -248,12 +268,18 @@ export async function setMemberAgreement(
 
 // Call after every fresh challenge snapshot (see useChallengeAgreement).
 // Idempotent — safe for multiple members' clients to call at once.
+//
+// Locks once everyone has *responded* (agreed or declined), not once
+// everyone has agreed — a decline is a valid, final answer that
+// shouldn't block the challenge from starting for whoever did join in.
+// Declining just means that member never lands on a team, so their
+// snaps to the circle keep working but never score (see submitSnap).
 export async function maybeLockChallenge(circleId: string, challengeId: string, challenge: ChallengeDoc) {
   if (challenge.status !== "setup") return;
 
   const members = Object.keys(challenge.agreementStatus);
-  const allAgreed = members.length > 0 && members.every((id) => challenge.agreementStatus[id].status === "agreed");
-  if (!allAgreed) return;
+  const allResponded = members.length > 0 && members.every((id) => challenge.agreementStatus[id].status !== "pending");
+  if (!allResponded) return;
 
   if (challenge.promptType === "daily") {
     // Daily prompts have no separate "start the timer" gesture — locking
@@ -314,4 +340,58 @@ export async function checkAndCompleteChallengeIfDone(
   if (timeExpired || everyoneSubmitted) {
     await updateDoc(challengeRef(circleId, challengeId), { status: "completed" });
   }
+}
+
+// Pays out the two rewards a completed challenge can grant: every
+// participant (both teams) gets +1 stats.challengesCompleted, and every
+// member of the strictly-higher-scoring team additionally unlocks the
+// "frameWin" reward frame. A tie (or a challenge nobody scored on) still
+// credits challengesCompleted for everyone but hands out no frameWin.
+//
+// Scores are read fresh from scoringEvents right before the transaction
+// rather than trusting a caller-supplied total, since a client's local
+// scoreboard listener could still be catching up. The transaction itself
+// re-checks status/rewardsGranted before writing anything, so it's safe
+// to call this from every member's client the moment they see
+// status === "completed" — whichever one gets there first wins the
+// transaction and the rest no-op against the now-committed flag.
+export async function awardChallengeRewards(circleId: string, challengeId: string): Promise<void> {
+  const eventsSnap = await getDocs(scoringEventsCol(circleId, challengeId));
+  const totals: Record<string, number> = {};
+  eventsSnap.forEach((d) => {
+    const event = d.data() as ScoringEventDoc;
+    totals[event.teamId] = (totals[event.teamId] ?? 0) + event.pointsAwarded;
+  });
+
+  await runTransaction(firestore, async (transaction) => {
+    const challengeSnap = await transaction.get(challengeRef(circleId, challengeId));
+    if (!challengeSnap.exists()) return;
+    const challenge = challengeSnap.data() as ChallengeDoc;
+    if (challenge.status !== "completed" || challenge.rewardsGranted) return;
+
+    const teamScores = Object.keys(challenge.teams).map((teamId) => ({ teamId, score: totals[teamId] ?? 0 }));
+    const topScore = Math.max(0, ...teamScores.map((t) => t.score));
+    const leaders = teamScores.filter((t) => t.score === topScore && topScore > 0);
+    const winningTeamId = leaders.length === 1 ? leaders[0].teamId : null;
+    const winnerIds = new Set(winningTeamId ? challenge.teams[winningTeamId] : []);
+
+    const participantIds = Array.from(new Set(Object.values(challenge.teams).flat()));
+    const userSnaps = await Promise.all(participantIds.map((id) => transaction.get(doc(firestore, "users", id))));
+
+    participantIds.forEach((userId, i) => {
+      const userSnap = userSnaps[i];
+      if (!userSnap.exists()) return;
+      const profile = userSnap.data() as UserProfile;
+
+      const unlockedFrames = new Set(profile.unlockedFrames ?? []);
+      if (winnerIds.has(userId)) unlockedFrames.add("frameWin");
+
+      transaction.update(doc(firestore, "users", userId), {
+        "stats.challengesCompleted": (profile.stats?.challengesCompleted ?? 0) + 1,
+        unlockedFrames: Array.from(unlockedFrames),
+      });
+    });
+
+    transaction.update(challengeRef(circleId, challengeId), { rewardsGranted: true });
+  });
 }

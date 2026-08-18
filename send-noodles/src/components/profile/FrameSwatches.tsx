@@ -1,20 +1,29 @@
-﻿import { View, Text, StyleSheet } from "react-native";
+import { View, Text, Image, StyleSheet } from "react-native";
 import { colors, spacing, type } from "../../constants/theme";
-import type { UnlockedFrame } from "../../data/mockProfile";
+import { frameRewardForId } from "../../constants/frames";
 
 type Props = {
-  frames: UnlockedFrame[];
+  frameIds: string[];
 };
 
-export default function FrameSwatches({ frames }: Props) {
+export default function FrameSwatches({ frameIds }: Props) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>Unlocked Frames</Text>
-      <View style={styles.row}>
-        {frames.map((f) => (
-          <View key={f.id} style={[styles.swatch, { backgroundColor: f.color }]} />
-        ))}
-      </View>
+      {frameIds.length === 0 ? (
+        <Text style={styles.empty}>send your first snap to unlock one</Text>
+      ) : (
+        <View style={styles.row}>
+          {frameIds.map((id) => {
+            const frame = frameRewardForId(id);
+            return frame ? (
+              <Image key={id} source={frame.source} style={styles.swatch} resizeMode="cover" />
+            ) : (
+              <View key={id} style={[styles.swatch, styles.unknownSwatch]} />
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -22,6 +31,8 @@ export default function FrameSwatches({ frames }: Props) {
 const styles = StyleSheet.create({
   wrap: { marginTop: spacing.lg },
   label: { ...type.eyebrow, color: colors.muted, marginBottom: spacing.sm },
+  empty: { ...type.caption, color: colors.muted },
   row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   swatch: { width: 28, height: 28, borderWidth: 1, borderColor: colors.ink },
+  unknownSwatch: { backgroundColor: colors.paperDim },
 });

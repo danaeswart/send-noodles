@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { Dimensions, FlatList, LayoutChangeEvent, ListRenderItem, Pressable, StyleSheet, Text, View } from "react-native";
+import { Dimensions, FlatList, LayoutChangeEvent, ListRenderItem, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import AvatarCluster from "../components/challenges/AvatarCluster";
+import CircleCard from "../components/circles/CircleCard";
 import CreateJoinCirclePanel from "../components/circles/CreateJoinCirclePanel";
-import { colors, spacing, type } from "../constants/theme";
-import { toParticipants } from "../utils/participants";
+import { colors } from "../constants/theme";
 import { useAuthUser } from "../hooks/useAuthUser";
 import { useMyCircles } from "../hooks/useMyCircles";
 import type { CircleDoc, WithId } from "../../firebase/types";
@@ -90,46 +89,13 @@ export default function CirclesScreen() {
     const color = CIRCLE_COLORS[index % CIRCLE_COLORS.length];
 
     return (
-      <Pressable style={styles.pagePressable} onPress={() => goToCircle(circle.id)}>
-        <View style={[styles.page, { height: pageHeight }]}>
-          <View style={[styles.topPanel, { backgroundColor: color }]}>
-            <View style={styles.pageHeader}>
-              <Text style={styles.circleLabel}>CIRCLE</Text>
-            </View>
-
-            <Text style={styles.circleName}>{circle.name}</Text>
-
-            <View style={styles.statsRow}>
-              <Text style={styles.statsText}>{circle.members.length} members</Text>
-            </View>
-          </View>
-
-          <View style={styles.contentPanel}>
-            <View style={styles.challengePanel}>
-              <Text style={styles.challengeLabel}>CURRENT CHALLENGE</Text>
-              <Text style={styles.challengeStatus}>
-                {circle.activeChallengeId
-                  ? "active challenge in progress — tap to view"
-                  : "no active challenge yet — tap to start one"}
-              </Text>
-            </View>
-
-            <View style={styles.metaFooter}>
-              <AvatarCluster
-                participants={toParticipants(circle.members.slice(0, 4))}
-                overflowCount={Math.max(0, circle.members.length - 4)}
-              />
-              <Text style={styles.openText}>tap anywhere to open</Text>
-            </View>
-          </View>
-
-          <View style={styles.pageBottomHint}>
-            <Text style={styles.pageBottomHintText}>
-              {isLastCircle ? "swipe up to create or join a circle" : "swipe up to view more circles"}
-            </Text>
-          </View>
-        </View>
-      </Pressable>
+      <CircleCard
+        circle={circle}
+        color={color}
+        isLastCircle={isLastCircle}
+        pageHeight={pageHeight}
+        onPress={() => goToCircle(circle.id)}
+      />
     );
   };
 
@@ -156,99 +122,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.paper,
-  },
-  pagePressable: {
-    width: "100%",
-  },
-  page: {
-    width: "100%",
-    backgroundColor: colors.paper,
-  },
-  pageHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.xl,
-  },
-  circleLabel: {
-    ...type.eyebrow,
-    color: colors.paper,
-    letterSpacing: 2,
-  },
-  circleName: {
-    ...type.display,
-    color: colors.paper,
-    fontSize: 44,
-    lineHeight: 48,
-    fontWeight: "900",
-    marginBottom: spacing.sm,
-  },
-  statsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.lg,
-  },
-  statsText: {
-    ...type.caption,
-    color: colors.paper,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  topPanel: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xxl,
-    paddingBottom: spacing.lg,
-  },
-  contentPanel: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxl,
-  },
-  challengePanel: {
-    padding: spacing.lg,
-    borderRadius: spacing.xl,
-    backgroundColor: colors.paper,
-    flex: 1,
-  },
-  challengeLabel: {
-    ...type.eyebrow,
-    color: colors.muted,
-    letterSpacing: 2,
-  },
-  challengeStatus: {
-    ...type.serifDisplay,
-    fontSize: 24,
-    lineHeight: 30,
-    color: colors.ink,
-    marginTop: spacing.sm,
-  },
-  metaFooter: {
-    marginTop: spacing.lg,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  openText: {
-    ...type.caption,
-    color: colors.ink,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  pageBottomHint: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: spacing.xl,
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    zIndex: 1,
-  },
-  pageBottomHintText: {
-    ...type.caption,
-    color: colors.muted,
-    textAlign: "center",
-    letterSpacing: 1,
   },
 });

@@ -1,18 +1,18 @@
-﻿import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { colors, spacing, type } from "../../constants/theme";
 
 type Props = {
-  points: number;
+  challengesCompleted: number;
   snaps: number;
   circles: number;
 };
 
-export default function StatsRow({ points, snaps, circles }: Props) {
+export default function StatsRow({ challengesCompleted, snaps, circles }: Props) {
   return (
     <View style={styles.row}>
       <View style={styles.cell}>
-        <Text style={styles.number}>{points.toLocaleString()}</Text>
-        <Text style={styles.label}>Points</Text>
+        <Text style={styles.number}>{challengesCompleted}</Text>
+        <Text style={styles.label}>Challenges</Text>
       </View>
       <View style={styles.divider} />
       <View style={styles.cell}>

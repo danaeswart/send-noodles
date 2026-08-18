@@ -1,5 +1,5 @@
 ﻿import { useState } from "react";
-import { ScrollView, Text, View, StyleSheet } from "react-native";
+import { ScrollView, Text, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -9,9 +9,9 @@ import { mockProfile } from "../../data/mockProfile";
 import SettingsFieldRow from "../../components/profile/SettingsFieldRow";
 import ToggleRow from "../../components/profile/ToggleRow";
 import ActionRow from "../../components/profile/ActionRow";
-import AvatarStyleRow from "../../components/profile/AvatarStyleRow";
 import { RootStackParamList } from "../../navigation/types";
 import { useAuthUser } from "../../hooks/useAuthUser";
+import { useUserProfile } from "../../hooks/useUserProfile";
 import { seedDevData, seedPrompts } from "../../../firebase/seed";
 import { logOut } from "../../../firebase/auth";
 
@@ -25,6 +25,7 @@ export default function ProfileSettingsPage() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
   const { user } = useAuthUser();
+  const { profile } = useUserProfile(user?.uid ?? null);
   const [preferences, setPreferences] = useState(mockProfile.settings.preferences);
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
@@ -76,19 +77,9 @@ export default function ProfileSettingsPage() {
       <Text style={styles.heading}>settings</Text>
 
       <Text style={styles.sectionLabel}>Account</Text>
-      {mockProfile.settings.account.map((field) => (
-        <SettingsFieldRow key={field.id} label={field.label} value={field.value} />
-      ))}
-
-      <Text style={[styles.sectionLabel, styles.sectionSpacing]}>Profile</Text>
-      <Text style={styles.subLabel}>Avatar Style</Text>
-      <View style={styles.avatarRowWrap}>
-        <AvatarStyleRow count={mockProfile.settings.avatarStyleCount} />
-      </View>
-      <SettingsFieldRow
-        label={mockProfile.settings.displayName.label}
-        value={mockProfile.settings.displayName.value}
-      />
+      <SettingsFieldRow label="Display Name" value={profile?.displayName ?? "—"} />
+      <SettingsFieldRow label="Email" value={user?.email ?? profile?.email ?? "—"} />
+      <SettingsFieldRow label="Password" value="••••••••" />
 
       <Text style={[styles.sectionLabel, styles.sectionSpacing]}>Preferences</Text>
       {preferences.map((pref) => (
@@ -129,8 +120,6 @@ const styles = StyleSheet.create({
   heading: { ...type.serifDisplay, fontSize: 34, color: colors.ink, marginBottom: spacing.lg },
   sectionLabel: { ...type.eyebrow, color: colors.muted, marginBottom: spacing.md },
   sectionSpacing: { marginTop: spacing.xl },
-  subLabel: { ...type.eyebrow, fontSize: 10, color: colors.muted, marginBottom: spacing.sm },
-  avatarRowWrap: { marginBottom: spacing.lg },
   seedError: { ...type.caption, color: colors.alert, marginTop: spacing.sm },
   seedResult: { ...type.caption, color: colors.muted, marginTop: spacing.sm },
 });

@@ -1,37 +1,43 @@
-﻿import { useState } from "react";
-import { View, Pressable, StyleSheet } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import { colors, spacing } from "../../constants/theme";
+import { AVATAR_FACES } from "../../constants/avatarFaces";
 
 type Props = {
-  count: number;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
 };
 
-// Simple selectable circle row standing in for real avatar-style icons.
-// Swap the inner View for actual illustrated face icons once that asset
-// set exists — selection logic/state stays the same.
-export default function AvatarStyleRow({ count }: Props) {
-  const [selected, setSelected] = useState(0);
-
+// Real illustrated face icons (assets/profile-faces/faceN.png) the user
+// picks as their profile avatar — selecting one persists it to their
+// Firestore profile (see ProfileStatsPage) and immediately updates the
+// big avatar next to their name.
+export default function AvatarStyleRow({ selectedId, onSelect }: Props) {
   return (
     <View style={styles.row}>
-      {Array.from({ length: count }, (_, i) => (
-        <Pressable key={i} onPress={() => setSelected(i)} hitSlop={6}>
-          <View style={[styles.circle, i === selected && styles.circleSelected]} />
+      {AVATAR_FACES.map((face) => (
+        <Pressable key={face.id} onPress={() => onSelect(face.id)} hitSlop={6}>
+          <View style={[styles.circle, face.id === selectedId && styles.circleSelected]}>
+            <Image source={face.source} style={styles.image} resizeMode="cover" />
+          </View>
         </Pressable>
       ))}
     </View>
   );
 }
 
+const CIRCLE_SIZE = 60;
+
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", gap: spacing.sm },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   circle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: CIRCLE_SIZE,
+    height: CIRCLE_SIZE,
+    borderRadius: CIRCLE_SIZE / 2,
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.paperDim,
+    overflow: "hidden",
   },
-  circleSelected: { borderColor: colors.ink, borderWidth: 1.5 },
+  circleSelected: { borderColor: colors.ink, borderWidth: 2 },
+  image: { width: "100%", height: "100%" },
 });

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Alert, Image, ScrollView, Share, StyleSheet, Text, View, Pressable } from "react-native";
+import { Alert, Dimensions, Image, ScrollView, Share, StyleSheet, Text, View, Pressable } from "react-native";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import AvatarCluster from "../components/challenges/AvatarCluster";
+import MemberFaceRow from "../components/circles/MemberFaceRow";
+import PointsChart from "../components/circles/PointsChart";
 import { colors, spacing, type } from "../constants/theme";
 import { RootStackParamList } from "../navigation/types";
 import { useAuthUser } from "../hooks/useAuthUser";
@@ -10,9 +11,13 @@ import { useActiveChallenge } from "../hooks/useActiveChallenge";
 import { useChallengeAgreement } from "../hooks/useChallengeAgreement";
 import { useScoreboard } from "../hooks/useScoreboard";
 import { useTodaysSnaps } from "../hooks/useTodaysSnaps";
-import { checkAndCompleteChallengeIfDone } from "../../firebase/challenges";
-import { removeMember } from "../../firebase/circles";
-import { toParticipants } from "../utils/participants";
+import { useUserProfiles } from "../hooks/useUserProfiles";
+import { awardChallengeRewards, checkAndCompleteChallengeIfDone } from "../../firebase/challenges";
+import { leaveCircle } from "../../firebase/circles";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const SNAP_GAP = spacing.sm;
+const SNAP_ITEM_SIZE = (SCREEN_WIDTH - spacing.lg * 2 - SNAP_GAP * 2) / 3;
 
 export default function CircleDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -24,10 +29,17 @@ export default function CircleDetailScreen() {
 
   const { circle, canProposeChallenge, startTimer, actionError } = useActiveChallenge(circleId, userId);
   const challengeId = circle?.activeChallengeId ?? null;
-  const { challenge, myAgreement, canEdit, agree, decline } = useChallengeAgreement(circleId, challengeId, userId);
-  const { totals, submittedUserIds } = useScoreboard(circleId, challengeId);
+  const {
+    challenge,
+    myAgreement,
+    agree,
+    decline,
+    actionError: agreementError,
+  } = useChallengeAgreement(circleId, challengeId, userId);
+  const { events, totals, submittedUserIds } = useScoreboard(circleId, challengeId);
   const snaps = useTodaysSnaps(circleId);
-  const [memberActionError, setMemberActionError] = useState<string | null>(null);
+  const memberProfiles = useUserProfiles(circle?.members ?? []);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   // Opportunistic "completed" transition — there's no Cloud Function to
   // do this the instant it becomes true on the Spark plan, so whichever
@@ -35,7 +47,11 @@ export default function CircleDetailScreen() {
   // flips it once the condition is actually met.
   useEffect(() => {
     if (!circleId || !challengeId || !challenge) return;
-    void checkAndCompleteChallengeIfDone(circleId, challengeId, challenge, submittedUserIds.size);
+    if (challenge.status === "active") {
+      void checkAndCompleteChallengeIfDone(circleId, challengeId, challenge, submittedUserIds.size);
+    } else if (challenge.status === "completed" && !challenge.rewardsGranted) {
+      void awardChallengeRewards(circleId, challengeId);
+    }
   }, [circleId, challengeId, challenge, submittedUserIds]);
 
   if (!circleId || !circle) {
@@ -66,23 +82,17 @@ export default function CircleDetailScreen() {
   const teamBLeading = teamBScore > teamAScore;
 
   const canStartTimer = challenge?.status === "locked" && challenge.promptType === "time_sensitive";
-  const ctaLabel = canProposeChallenge
-    ? "+ create challenge"
-    : canStartTimer
-      ? "▶ start challenge"
-      : challenge?.status === "setup"
-        ? "tap 'the prize' to agree to the wager"
-        : "challenge in progress";
+  // While a challenge is pending everyone's response, hide the
+  // battle/teams (nothing's been played yet) and the bottom CTA (the
+  // join/decline buttons above are the only relevant action) — but
+  // snaps still send to the circle regardless of challenge status, so
+  // that section always stays visible.
+  const isPendingInvite = challenge?.status === "setup";
+  const ctaLabel = canProposeChallenge ? "+ create challenge" : canStartTimer ? "▶ start challenge" : "challenge in progress";
 
   const handleCtaPress = () => {
     if (canProposeChallenge) navigation.navigate("ChallengeSetup", { circleId });
     else if (canStartTimer) void startTimer();
-  };
-
-  const handleWagerPress = () => {
-    if (!canEdit) return;
-    if (myAgreement === "agreed") void decline();
-    else void agree();
   };
 
   const isCreator = circle.creatorId === userId;
@@ -91,18 +101,20 @@ export default function CircleDetailScreen() {
     void Share.share({ message: `Join my circle "${circle.name}" on Send Noodles — use code ${circle.joinCode}` });
   };
 
-  const handleRemoveMember = (memberId: string) => {
-    Alert.alert("Remove member?", "They'll need a new invite code to rejoin the circle.", [
+  const handleLeaveCircle = () => {
+    Alert.alert("Leave this circle?", "You'll need a new invite code to rejoin.", [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Remove",
+        text: "Leave",
         style: "destructive",
         onPress: () => {
-          if (!circleId || !userId) return;
-          setMemberActionError(null);
-          removeMember(circleId, userId, memberId).catch((err) => {
-            setMemberActionError(err instanceof Error ? err.message : "Couldn't remove that member.");
-          });
+          if (!userId) return;
+          setLeaveError(null);
+          leaveCircle(circleId, userId)
+            .then(() => navigation.navigate("Main"))
+            .catch((err) => {
+              setLeaveError(err instanceof Error ? err.message : "Couldn't leave the circle.");
+            });
         },
       },
     ]);
@@ -123,9 +135,12 @@ export default function CircleDetailScreen() {
 
         <Text style={styles.circleTitle}>{circle.name}</Text>
 
-        <View style={styles.avatarRow}>
-          <AvatarCluster participants={toParticipants(circle.members.slice(0, 4))} overflowCount={Math.max(0, circle.members.length - 4)} />
-          <Text style={styles.memberCount}>{circle.members.length} members</Text>
+        <View style={styles.membersRow}>
+          <MemberFaceRow memberIds={circle.members} profiles={memberProfiles} max={5} size={40} />
+          <Pressable style={styles.membersButton} onPress={() => navigation.navigate("Members", { circleId })}>
+            <Text style={styles.memberCount}>{circle.members.length} members</Text>
+            <Text style={styles.membersArrow}>→</Text>
+          </Pressable>
         </View>
 
         <View style={styles.divider} />
@@ -143,23 +158,14 @@ export default function CircleDetailScreen() {
           </>
         )}
 
-        <Text style={styles.sectionLabel}>members</Text>
-        {circle.members.map((memberId) => (
-          <View key={memberId} style={styles.memberRow}>
-            <Text style={styles.memberName}>{memberId === userId ? "you" : memberId.slice(0, 6)}</Text>
-            {isCreator && memberId !== circle.creatorId && (
-              <Pressable onPress={() => handleRemoveMember(memberId)} hitSlop={8}>
-                <Text style={styles.removeText}>remove</Text>
-              </Pressable>
-            )}
-          </View>
-        ))}
-        {memberActionError && <Text style={styles.errorText}>{memberActionError}</Text>}
-
-        <View style={styles.divider} />
-
-        <Text style={styles.sectionLabel}>current challenge</Text>
-        <Text style={styles.challengeTitle}>{challenge?.promptText ?? "no active challenge yet"}</Text>
+        {isPendingInvite ? (
+          <Text style={styles.sectionLabel}>challenge invite</Text>
+        ) : (
+          <>
+            <Text style={styles.sectionLabel}>current challenge</Text>
+            <Text style={styles.challengeTitle}>{challenge?.promptText ?? "no active challenge yet"}</Text>
+          </>
+        )}
 
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
@@ -168,16 +174,35 @@ export default function CircleDetailScreen() {
               {challenge?.timeline.durationHours ? `${challenge.timeline.durationHours}h` : "not set"}
             </Text>
           </View>
-          <Pressable style={styles.statCard} onPress={handleWagerPress} disabled={!canEdit}>
+          <View style={styles.statCard}>
             <Text style={styles.statLabel}>the prize</Text>
-            <Text style={styles.statValueSecondary}>
-              {challenge?.wager || "no wager yet"}
-              {myAgreement === "agreed" ? "  ✓ you agreed" : canEdit ? "  · tap to agree" : ""}
-            </Text>
-          </Pressable>
+            <Text style={styles.statValueSecondary}>{challenge?.wager || "no wager yet"}</Text>
+          </View>
         </View>
 
-        {challenge && (
+        {isPendingInvite && (
+          <View style={styles.inviteButtonRow}>
+            <Pressable
+              style={[styles.inviteButton, myAgreement === "agreed" && styles.inviteButtonJoinedActive]}
+              onPress={() => void agree()}
+            >
+              <Text style={[styles.inviteButtonText, myAgreement === "agreed" && styles.inviteButtonTextActive]}>
+                join challenge
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.inviteButton, myAgreement === "declined" && styles.inviteButtonDeclinedActive]}
+              onPress={() => void decline()}
+            >
+              <Text style={[styles.inviteButtonText, myAgreement === "declined" && styles.inviteButtonTextActive]}>
+                decline
+              </Text>
+            </Pressable>
+          </View>
+        )}
+        {isPendingInvite && agreementError && <Text style={styles.errorText}>{agreementError}</Text>}
+
+        {challenge && !isPendingInvite && (
           <>
             <View style={styles.divider} />
 
@@ -191,31 +216,27 @@ export default function CircleDetailScreen() {
                 <Text style={[styles.teamLabel, teamALeading && styles.leadingTeam]}>{teamAId.replace("_", " ")}</Text>
                 <Text style={[styles.battleScore, teamALeading && styles.leadingScore]}>{teamAScore}</Text>
                 <View style={styles.teamSubRow}>
-                  <AvatarCluster participants={toParticipants(teamAMembers)} overflowCount={0} />
-                  <Text style={[styles.teamCaption, teamALeading && styles.leadingTeam]}>{teamAId.replace("_", " ")}</Text>
+                  <MemberFaceRow memberIds={teamAMembers} profiles={memberProfiles} size={40} />
                 </View>
               </View>
               <View style={styles.battleBlock}>
                 <Text style={[styles.teamLabel, teamBLeading && styles.leadingTeam]}>{teamBId.replace("_", " ")}</Text>
                 <Text style={[styles.battleScore, teamBLeading && styles.leadingScore]}>{teamBScore}</Text>
                 <View style={styles.teamSubRow}>
-                  <AvatarCluster participants={toParticipants(teamBMembers)} overflowCount={0} />
-                  <Text style={[styles.teamCaption, teamBLeading && styles.leadingTeam]}>{teamBId.replace("_", " ")}</Text>
+                  <MemberFaceRow memberIds={teamBMembers} profiles={memberProfiles} size={40} />
                 </View>
               </View>
             </View>
 
-            <View style={styles.lineChartPlaceholder}>
-              <Text style={styles.chartLabel}>chart placeholder</Text>
-            </View>
+            <PointsChart events={events} teamAId={teamAId} teamBId={teamBId} />
           </>
         )}
 
         <View style={styles.divider} />
 
-        <Text style={styles.sectionLabel}>today's snaps</Text>
+        <Text style={styles.sectionLabel}>today's snaps preview</Text>
         <View style={styles.snapGrid}>
-          {[...Array(4)].map((_, index) => {
+          {[...Array(6)].map((_, index) => {
             const snap = snaps[index];
             return (
               <View key={snap?.id ?? index} style={styles.snapItem}>
@@ -226,12 +247,21 @@ export default function CircleDetailScreen() {
         </View>
         <Text style={styles.viewAllSnaps}>view all snaps →</Text>
 
-        <View style={styles.divider} />
+        {!isPendingInvite && (
+          <>
+            <View style={styles.divider} />
 
-        <Pressable onPress={handleCtaPress} disabled={!canProposeChallenge && !canStartTimer}>
-          <Text style={styles.ctaText}>{ctaLabel}</Text>
+            <Pressable onPress={handleCtaPress} disabled={!canProposeChallenge && !canStartTimer}>
+              <Text style={styles.ctaText}>{ctaLabel}</Text>
+            </Pressable>
+            {actionError && <Text style={styles.errorText}>{actionError}</Text>}
+          </>
+        )}
+
+        <Pressable style={styles.leaveButton} onPress={handleLeaveCircle} hitSlop={8}>
+          <Text style={styles.leaveButtonText}>leave circle</Text>
         </Pressable>
-        {actionError && <Text style={styles.errorText}>{actionError}</Text>}
+        {leaveError && <Text style={styles.errorText}>{leaveError}</Text>}
       </ScrollView>
     </View>
   );
@@ -247,37 +277,48 @@ const styles = StyleSheet.create({
   headerEyebrow: { ...type.eyebrow, color: colors.muted, letterSpacing: 2 },
   headerAccentLine: { width: 24, height: 2, backgroundColor: colors.accent, marginLeft: spacing.sm },
   circleTitle: { ...type.display, color: colors.ink, fontSize: 48, lineHeight: 54, fontWeight: "900", marginBottom: spacing.lg },
-  avatarRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.lg },
-  memberCount: { ...type.caption, color: colors.muted, marginLeft: spacing.sm },
+  membersRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.lg },
+  membersButton: { flexDirection: "row", alignItems: "center" },
+  memberCount: { ...type.caption, color: colors.muted },
+  membersArrow: { ...type.body, color: colors.ink, marginLeft: spacing.sm },
   divider: { height: 1, backgroundColor: colors.line, marginVertical: spacing.lg },
   sectionLabel: { ...type.eyebrow, color: colors.muted, letterSpacing: 2, marginBottom: spacing.sm },
   codeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   codeText: { ...type.display, color: colors.ink, fontSize: 32, letterSpacing: 4 },
   shareText: { ...type.caption, color: colors.accent, textTransform: "uppercase", letterSpacing: 1 },
-  memberRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: spacing.xs },
-  memberName: { ...type.body, color: colors.ink },
-  removeText: { ...type.caption, color: colors.alert, textTransform: "uppercase", letterSpacing: 1 },
   challengeTitle: { ...type.serifDisplay, color: colors.ink, fontSize: 34, lineHeight: 42, marginBottom: spacing.lg },
   statsGrid: { flexDirection: "row", justifyContent: "space-between", gap: spacing.lg },
   statCard: { flex: 1, gap: spacing.xs },
   statLabel: { ...type.caption, color: colors.muted, textTransform: "uppercase", letterSpacing: 1 },
   statValue: { ...type.heading, color: colors.ink, fontSize: 28, marginTop: spacing.xs },
   statValueSecondary: { ...type.body, color: colors.muted, marginTop: spacing.xs },
+  inviteButtonRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
+  inviteButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.ink,
+    alignItems: "center",
+  },
+  inviteButtonJoinedActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  inviteButtonDeclinedActive: { backgroundColor: colors.alert, borderColor: colors.alert },
+  inviteButtonText: { ...type.eyebrow, color: colors.ink, letterSpacing: 1 },
+  inviteButtonTextActive: { color: colors.paper },
   battleHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.sm },
   leadingLabel: { ...type.caption, color: colors.accent, letterSpacing: 2 },
-  battleRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.lg },
+  battleRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.lg, marginBottom: spacing.lg },
   battleBlock: { flex: 1 },
   teamLabel: { ...type.body, color: colors.ink, fontWeight: "700", textTransform: "lowercase" },
   leadingTeam: { color: colors.accent },
   battleScore: { ...type.display, color: colors.ink, fontSize: 40 },
   leadingScore: { color: colors.accent },
-  teamSubRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.sm },
-  teamCaption: { ...type.caption, color: colors.muted, textTransform: "lowercase" },
-  lineChartPlaceholder: { height: 140, borderRadius: spacing.xl, backgroundColor: colors.paperDim, marginTop: spacing.lg, justifyContent: "center", alignItems: "center" },
-  chartLabel: { ...type.caption, color: colors.muted },
-  snapGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginTop: spacing.lg, gap: spacing.sm },
-  snapItem: { width: "48%", aspectRatio: 1, backgroundColor: colors.line, borderRadius: spacing.sm, marginBottom: spacing.sm },
+  teamSubRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.sm },
+  snapGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.lg },
+  snapItem: { width: SNAP_ITEM_SIZE, height: SNAP_ITEM_SIZE, backgroundColor: colors.line, borderRadius: spacing.sm },
   viewAllSnaps: { ...type.body, color: colors.ink, fontStyle: "italic", marginTop: spacing.sm },
   ctaText: { ...type.display, color: colors.accent, marginTop: spacing.xl, fontSize: 32, lineHeight: 36 },
+  leaveButton: { alignSelf: "center", marginTop: spacing.xxl },
+  leaveButtonText: { ...type.caption, color: colors.alert, textTransform: "uppercase", letterSpacing: 1 },
   errorText: { ...type.caption, color: colors.alert, marginTop: spacing.sm },
 });

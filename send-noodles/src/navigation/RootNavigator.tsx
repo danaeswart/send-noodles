@@ -5,6 +5,7 @@ import SwipeNavigator from "./SwipeNavigator";
 import SnapReviewScreen from "../screens/SnapReviewScreen";
 import CircleDetailScreen from "../screens/CircleDetailScreen";
 import ChallengeSetupScreen from "../screens/ChallengeSetupScreen";
+import MembersScreen from "../screens/MembersScreen";
 import LoginScreen from "../screens/auth/LoginScreen";
 import SignUpScreen from "../screens/auth/SignUpScreen";
 import { RootStackParamList } from "./types";
@@ -47,6 +48,7 @@ export default function RootNavigator() {
             />
             <Stack.Screen name="CircleDetail" component={CircleDetailScreen} />
             <Stack.Screen name="ChallengeSetup" component={ChallengeSetupScreen} />
+            <Stack.Screen name="Members" component={MembersScreen} />
           </>
         ) : (
           <>

@@ -13,10 +13,22 @@ service cloud.firestore {
     }
 
     // /users/{userId} — every user can read any profile (display names
-    // are shown across circles), but only ever write their own.
+    // are shown across circles). Creating/renaming/etc. a profile is
+    // always restricted to its own owner. Updates get one narrow
+    // carve-out: any signed-in user may bump another member's
+    // stats/unlockedFrames, since snap-count milestones and challenge-win
+    // rewards are paid out client-side (no Cloud Functions on the Spark
+    // plan — see recordSnapSent/awardChallengeRewards) and can touch
+    // teammates' or opponents' docs, not just the caller's own. Every
+    // other field (displayName, email, avatarId, ...) still requires the
+    // doc to be the requester's own.
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (
+        request.auth.uid == userId ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["stats", "unlockedFrames"])
+      );
       allow delete: if false;
     }
 
@@ -88,16 +100,18 @@ service cloud.firestore {
           // setup: any member of this challenge may edit the
           // wager/duration/agreementStatus (proposeWagerAndTimeline
           // resets every member's agreement, so any key in that map
-          // may change here), and trigger the auto-lock transition
+          // may change here), trigger the auto-lock transition
           // (setup -> locked, or setup -> active for daily prompts,
-          // which have no separate "start" step).
+          // which have no separate "start" step), and grow `teams` —
+          // setMemberAgreement drops each member onto a team the moment
+          // they agree, so team assignments fill in gradually during
+          // setup rather than being frozen at creation.
           (
             resource.data.status == "setup" &&
             request.auth.uid in resource.data.agreementStatus &&
             request.resource.data.promptId == resource.data.promptId &&
             request.resource.data.promptText == resource.data.promptText &&
             request.resource.data.promptType == resource.data.promptType &&
-            request.resource.data.teams == resource.data.teams &&
             request.resource.data.createdBy == resource.data.createdBy &&
             (request.resource.data.status == "setup" ||
              request.resource.data.status == "locked" ||
@@ -122,6 +136,16 @@ service cloud.firestore {
             request.resource.data.wager == resource.data.wager &&
             request.resource.data.timeline == resource.data.timeline &&
             request.resource.data.agreementStatus == resource.data.agreementStatus
+          ) ||
+          // completed: the one-time rewardsGranted flag may flip to true,
+          // marking that challengesCompleted/frameWin have been paid out
+          // for this challenge (see awardChallengeRewards) — everything
+          // else about a completed challenge stays frozen.
+          (
+            resource.data.status == "completed" &&
+            request.resource.data.status == "completed" &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(["rewardsGranted"]) &&
+            request.resource.data.rewardsGranted == true
           )
         );
 

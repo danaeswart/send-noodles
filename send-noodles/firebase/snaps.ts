@@ -16,6 +16,7 @@ import {
 
 import { firestore } from "./firebaseConfig";
 import { addScoringEvent } from "./challenges";
+import { recordSnapSent } from "./users";
 import { uploadImageToCloudinary } from "../cloudinary/upload";
 import type { SnapDoc, WithId } from "./types";
 
@@ -73,6 +74,10 @@ export async function submitSnap({ circleId, userId, photoUri, frameId, challeng
   if (countsTowardChallenge) {
     await addScoringEvent(circleId, challengeId!, userId, teamId!, "snap_submitted", POINTS_PER_SNAP);
   }
+
+  // Every snap counts toward the sender's lifetime tally, whether or not
+  // it scored a challenge point — this is what unlocks milestone frames.
+  await recordSnapSent(userId);
 
   return snapRef.id;
 }

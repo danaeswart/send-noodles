@@ -1,4 +1,4 @@
-﻿import { useEffect } from "react";
+import { useEffect } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -11,11 +11,15 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { colors, spacing, type } from "../../constants/theme";
-import { mockProfile } from "../../data/mockProfile";
+import { faceSourceForId } from "../../constants/avatarFaces";
 import Avatar from "../../components/profile/Avatar";
 import StatsRow from "../../components/profile/StatsRow";
 import FrameSwatches from "../../components/profile/FrameSwatches";
-import RecentWinsList from "../../components/profile/RecentWinsList";
+import AvatarStyleRow from "../../components/profile/AvatarStyleRow";
+import { useAuthUser } from "../../hooks/useAuthUser";
+import { useUserProfile } from "../../hooks/useUserProfile";
+import { useMyCircles } from "../../hooks/useMyCircles";
+import { setAvatarId } from "../../../firebase/users";
 
 type Props = {
   isActive: boolean;
@@ -26,6 +30,11 @@ type Props = {
 export default function ProfileStatsPage({ isActive }: Props) {
   const insets = useSafeAreaInsets();
   const progress = useSharedValue(0);
+
+  const { user } = useAuthUser();
+  const userId = user?.uid ?? null;
+  const { profile } = useUserProfile(userId);
+  const circles = useMyCircles(userId);
 
   useEffect(() => {
     if (isActive) {
@@ -39,29 +48,38 @@ export default function ProfileStatsPage({ isActive }: Props) {
     transform: [{ translateY: interpolate(progress.value, [0, 1], [14, 0], Extrapolation.CLAMP) }],
   }));
 
+  const handleSelectAvatar = (avatarId: string) => {
+    if (userId) void setAvatarId(userId, avatarId);
+  };
+
   return (
     <View style={[styles.page, { paddingTop: insets.top + spacing.xl }]}>
       <Animated.View style={[styles.identity, fadeStyle]}>
-        <Avatar source={mockProfile.avatarSource} />
+        <Avatar source={faceSourceForId(profile?.avatarId)} />
         <View style={styles.identityText}>
-          <Text style={styles.username}>{mockProfile.username}</Text>
+          <Text style={styles.username}>{profile?.displayName ?? user?.email ?? "…"}</Text>
           <View style={styles.streakRow}>
             <View style={styles.streakDot} />
-            <Text style={styles.streakText}>{mockProfile.streakDays} day streak</Text>
+            <Text style={styles.streakText}>{profile?.stats.streak ?? 0} day streak</Text>
           </View>
         </View>
       </Animated.View>
 
       <Animated.View style={fadeStyle}>
-        <StatsRow points={mockProfile.points} snaps={mockProfile.snaps} circles={mockProfile.circles} />
+        <StatsRow
+          challengesCompleted={profile?.stats.challengesCompleted ?? 0}
+          snaps={profile?.stats.totalSnaps ?? 0}
+          circles={circles.length}
+        />
       </Animated.View>
 
       <Animated.View style={fadeStyle}>
-        <FrameSwatches frames={mockProfile.unlockedFrames} />
+        <FrameSwatches frameIds={profile?.unlockedFrames ?? []} />
       </Animated.View>
 
       <Animated.View style={fadeStyle}>
-        <RecentWinsList wins={mockProfile.recentWins} />
+        <Text style={[styles.sectionLabel, styles.sectionSpacing]}>Avatar Style</Text>
+        <AvatarStyleRow selectedId={profile?.avatarId ?? null} onSelect={handleSelectAvatar} />
       </Animated.View>
 
       <View style={styles.hintWrap}>
@@ -79,6 +97,8 @@ const styles = StyleSheet.create({
   streakRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.sm },
   streakDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#6C63FF", marginRight: spacing.xs },
   streakText: { ...type.caption, color: colors.ink },
+  sectionLabel: { ...type.eyebrow, color: colors.muted, marginBottom: spacing.sm },
+  sectionSpacing: { marginTop: spacing.lg },
   hintWrap: { flex: 1, justifyContent: "flex-end", alignItems: "center", paddingBottom: spacing.xl },
   hint: { ...type.caption, color: colors.muted },
 });

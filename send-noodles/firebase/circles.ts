@@ -1,7 +1,7 @@
 import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 
 import { firestore } from "./firebaseConfig";
-import type { CircleDoc } from "./types";
+import type { ChallengeDoc, CircleDoc } from "./types";
 
 // Unambiguous alphabet — excludes 0/O/1/I/L so a code read aloud or
 // typed from a screenshot doesn't get miskeyed.
@@ -53,7 +53,51 @@ export async function joinCircleByCode(code: string, userId: string): Promise<st
   if (circle.members.includes(userId)) return circleDoc.id;
 
   await updateDoc(doc(firestore, "circles", circleDoc.id), { members: arrayUnion(userId) });
+
+  // If a challenge is currently in progress, the new member gets the
+  // same pending invite to it any existing member would see — added
+  // once here rather than left out just because they joined the circle
+  // after the challenge was already proposed.
+  if (circle.activeChallengeId) {
+    const challengeDocRef = doc(firestore, "circles", circleDoc.id, "challenges", circle.activeChallengeId);
+    const challengeSnap = await getDoc(challengeDocRef);
+    if (challengeSnap.exists()) {
+      const challenge = challengeSnap.data() as ChallengeDoc;
+      if (challenge.status !== "completed" && !challenge.agreementStatus[userId]) {
+        await updateDoc(challengeDocRef, {
+          [`agreementStatus.${userId}`]: { status: "pending", timestamp: null },
+        });
+      }
+    }
+  }
+
   return circleDoc.id;
+}
+
+// A member leaving of their own accord — unlike removeMember, there's
+// no creator-only check here; anyone, including the creator, can leave.
+// If the creator leaves and other members remain, admin passes to one
+// of them at random rather than leaving the circle without anyone who
+// can see the join code or remove members. Doesn't touch any
+// in-progress challenge's teams/agreementStatus; a departed member's
+// old team slot just stops getting submissions.
+export async function leaveCircle(circleId: string, userId: string): Promise<void> {
+  const circleDocRef = doc(firestore, "circles", circleId);
+  const snap = await getDoc(circleDocRef);
+  if (!snap.exists()) throw new Error("Circle not found.");
+
+  const circle = snap.data() as CircleDoc;
+  if (!circle.members.includes(userId)) throw new Error("You're not a member of this circle.");
+
+  const remainingMembers = circle.members.filter((memberId) => memberId !== userId);
+  const isCreatorLeaving = circle.creatorId === userId;
+
+  if (isCreatorLeaving && remainingMembers.length > 0) {
+    const newCreatorId = remainingMembers[Math.floor(Math.random() * remainingMembers.length)];
+    await updateDoc(circleDocRef, { members: arrayRemove(userId), creatorId: newCreatorId });
+  } else {
+    await updateDoc(circleDocRef, { members: arrayRemove(userId) });
+  }
 }
 
 export async function removeMember(circleId: string, requesterId: string, memberIdToRemove: string): Promise<void> {
