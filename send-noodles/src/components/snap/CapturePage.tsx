@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
+import * as Haptics from "expo-haptics";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSequence,
   withTiming,
 } from "react-native-reanimated";
 
 import { colors, spacing, type } from "../../constants/theme";
-import CapturedPhotoFrame from "./CapturedPhotoFrame";
+import PolaroidFrame from "./PolaroidFrame";
+import useShakeDetector from "../../hooks/useShakeDetector";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SWIPE_THRESHOLD = 60;
 
 type Props = {
@@ -23,34 +26,57 @@ type Props = {
   onRequestReview: () => void;
 };
 
-// Top page of the capture/send flow — a live camera viewfinder.
-// Swipe DOWN here always captures — or re-captures, silently discarding
-// whatever photo was already there — and never changes page. This is
-// deliberate: it lets someone retake a shot as many times as they want
-// without ever leaving this screen.
-// Swipe UP moves to the review page, but only once a photo exists.
+// Top page of the capture/send flow — a live camera viewfinder styled as
+// a polaroid. Swipe DOWN always captures (or re-captures, discarding
+// whatever photo was already there) and never changes page — that's
+// deliberate, it lets someone retake as many times as they want without
+// leaving this screen. A fresh capture comes back face-down: the polaroid
+// shows blank white until the phone is physically shaken, at which point
+// it reveals the shot with a haptic buzz and, a beat later, moves on to
+// the send page on its own — no swipe required to get there.
 export default function CapturePage({ hasPhoto, photoUri, onCapture, onRequestReview }: Props) {
-  const fallProgress = useSharedValue(0);
   const cameraRef = useRef<CameraView>(null);
   const [facing, setFacing] = useState<CameraType>("back");
   const [isCameraReady, setIsCameraReady] = useState(false);
+  const [isRevealed, setIsRevealed] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
+  const revealProgress = useSharedValue(0);
+  const revealTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pulse = useSharedValue(1);
 
   useEffect(() => {
-    if (hasPhoto) {
-      fallProgress.value = 0;
-      fallProgress.value = withTiming(1, { duration: 550, easing: Easing.in(Easing.cubic) });
+    setIsRevealed(false);
+    revealProgress.value = 0;
+    if (revealTimeout.current) clearTimeout(revealTimeout.current);
+  }, [photoUri]);
+
+  useEffect(() => {
+    if (hasPhoto && !isRevealed) {
+      pulse.value = withRepeat(
+        withSequence(
+          withTiming(1.08, { duration: 550, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 550, easing: Easing.inOut(Easing.ease) }),
+        ),
+        -1,
+      );
+    } else {
+      pulse.value = withTiming(1, { duration: 150 });
     }
-  }, [hasPhoto, photoUri]);
+  }, [hasPhoto, isRevealed]);
 
-  const fallStyle = useAnimatedStyle(() => ({
-    opacity: 1 - fallProgress.value,
-    transform: [{ translateY: fallProgress.value * (SCREEN_HEIGHT * 0.35) }],
-  }));
+  const reveal = () => {
+    if (isRevealed) return;
+    setIsRevealed(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    revealProgress.value = withTiming(1, { duration: 500 });
+    revealTimeout.current = setTimeout(onRequestReview, 700);
+  };
 
-  const dockStyle = useAnimatedStyle(() => ({
-    opacity: fallProgress.value,
-  }));
+  useShakeDetector(reveal, hasPhoto && !isRevealed);
+
+  const coverStyle = useAnimatedStyle(() => ({ opacity: 1 - revealProgress.value }));
+  const photoStyle = useAnimatedStyle(() => ({ opacity: revealProgress.value }));
+  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
   const handleShutter = async () => {
     if (!cameraRef.current || !isCameraReady) return;
@@ -66,8 +92,6 @@ export default function CapturePage({ hasPhoto, photoUri, onCapture, onRequestRe
     .onEnd((e) => {
       if (e.translationY > SWIPE_THRESHOLD) {
         runOnJS(handleShutter)();
-      } else if (e.translationY < -SWIPE_THRESHOLD && hasPhoto) {
-        runOnJS(onRequestReview)();
       }
     });
 
@@ -89,41 +113,50 @@ export default function CapturePage({ hasPhoto, photoUri, onCapture, onRequestRe
     );
   }
 
+  const instruction = hasPhoto ? "shake to reveal photo" : "swipe down to capture";
+
   return (
     <GestureDetector gesture={pan}>
       <View style={styles.page}>
-        <View style={styles.viewfinderWrap}>
-          <View style={styles.viewfinder}>
-            <CameraView
-              ref={cameraRef}
-              style={StyleSheet.absoluteFill}
-              facing={facing}
-              onCameraReady={() => setIsCameraReady(true)}
-            />
-            <Pressable style={styles.flipButton} onPress={flipCamera} hitSlop={12}>
-              <Text style={styles.flipButtonLabel}>flip</Text>
-            </Pressable>
+        <View style={styles.cardWrap}>
+          <View style={styles.cardGroup}>
+            <PolaroidFrame width="100%">
+              <CameraView
+                ref={cameraRef}
+                style={StyleSheet.absoluteFill}
+                facing={facing}
+                onCameraReady={() => setIsCameraReady(true)}
+              />
+              {!hasPhoto && <View style={styles.dimScrim} pointerEvents="none" />}
+
+              {hasPhoto && (
+                <>
+                  <Animated.View style={[styles.blankCover, coverStyle]} pointerEvents="none" />
+                  {photoUri && (
+                    <Animated.Image
+                      source={{ uri: photoUri }}
+                      style={[StyleSheet.absoluteFill, photoStyle]}
+                      resizeMode="cover"
+                    />
+                  )}
+                </>
+              )}
+            </PolaroidFrame>
+
+            {!hasPhoto && (
+              <View style={styles.flipButtonWrap} pointerEvents="box-none">
+                <Pressable style={styles.flipButton} onPress={flipCamera} hitSlop={12}>
+                  <Text style={styles.flipButtonLabel}>⇄ flip cam</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </View>
 
-        {hasPhoto && photoUri && (
-          <Animated.View style={[styles.fallingThumb, fallStyle]} pointerEvents="none">
-            <CapturedPhotoFrame uri={photoUri} height={140} />
-          </Animated.View>
-        )}
-
         <View style={styles.footer}>
-          <Text style={styles.instruction}>
-            {hasPhoto ? "swipe up to review your snap" : "swipe down to capture"}
-          </Text>
-          {hasPhoto && photoUri && (
-            <Animated.View style={[styles.dock, dockStyle]}>
-              <View style={styles.dockChip}>
-                <CapturedPhotoFrame uri={photoUri} height={20} />
-              </View>
-              <Text style={styles.dockLabel}>photo ready below</Text>
-            </Animated.View>
-          )}
+          <Animated.Text style={[styles.instruction, hasPhoto && styles.instructionShake, hasPhoto && pulseStyle]}>
+            {instruction}
+          </Animated.Text>
         </View>
       </View>
     </GestureDetector>
@@ -132,35 +165,22 @@ export default function CapturePage({ hasPhoto, photoUri, onCapture, onRequestRe
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.paper, paddingHorizontal: spacing.lg, justifyContent: "space-between" },
-  viewfinderWrap: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  viewfinder: {
-    alignSelf: "center",
-    width: "84%",
-    aspectRatio: 1,
-    backgroundColor: colors.ink,
-    borderWidth: 1,
-    borderColor: colors.paperDim,
-    overflow: "hidden",
-  },
+  cardWrap: { flex: 1, justifyContent: "center" },
+  cardGroup: { alignSelf: "center", width: "84%" },
+  dimScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.ink, opacity: 0.5 },
+  blankCover: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.paper },
+  flipButtonWrap: { position: "absolute", top: -18, left: 0, right: 0, alignItems: "center" },
   flipButton: {
-    position: "absolute",
-    top: spacing.sm,
-    right: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    backgroundColor: colors.ink,
-    opacity: 0.7,
+    backgroundColor: "#D9A62E",
   },
-  flipButtonLabel: { ...type.caption, color: colors.paper, textTransform: "lowercase" },
-  fallingThumb: { position: "absolute", alignSelf: "center", top: "30%", width: "70%" },
+  flipButtonLabel: { ...type.caption, color: colors.ink, textTransform: "uppercase", fontWeight: "700" },
   footer: { paddingBottom: spacing.xxl, alignItems: "center" },
-  instruction: { ...type.eyebrow, color: colors.ink, marginBottom: spacing.sm, textTransform: "lowercase" },
-  dock: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  dockChip: { width: 20, height: 20 },
-  dockLabel: { ...type.caption, color: colors.muted },
+  instruction: { ...type.eyebrow, color: colors.ink, textTransform: "lowercase" },
+  instructionShake: { fontSize: 18, fontWeight: "800", color: colors.alert, letterSpacing: 0.4 },
   permissionWrap: { alignItems: "center", justifyContent: "center", gap: spacing.md },
   permissionTitle: { ...type.heading, color: colors.ink },
   permissionBody: { ...type.body, color: colors.muted, textAlign: "center" },

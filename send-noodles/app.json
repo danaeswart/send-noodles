@@ -32,6 +32,12 @@
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to snap photos."
         }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow $(PRODUCT_NAME) to access your device motion to detect a shake."
+        }
       ]
     ]
   }

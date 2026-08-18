@@ -8,10 +8,18 @@ export type WithId<T> = T & { id: string };
 
 // /users/{userId}
 export interface UserProfile {
+  firstName: string;
+  surname: string;
   displayName: string;
   email: string;
   avatarUrl: string | null;
-  stats: { challengesCompleted: number; streak: number };
+  // Which of the bundled avatar-style faces (assets/profile-faces/faceN.png)
+  // this user picked — null until they choose one on the profile page.
+  avatarId: string | null;
+  stats: { challengesCompleted: number; streak: number; totalSnaps: number };
+  // Reward frame ids unlocked via snap-count milestones and challenge wins
+  // (see SNAP_MILESTONES in firebase/users.ts and awardChallengeRewards in
+  // firebase/challenges.ts) — each maps to an asset in assets/frames/.
   unlockedFrames: string[];
   createdAt: Timestamp;
 }
@@ -51,12 +59,23 @@ export interface ChallengeDoc {
   agreementStatus: Record<string, AgreementEntry>; // keyed by userId
   createdBy: string;
   createdAt: Timestamp;
+  // One-time flag set by awardChallengeRewards once challengesCompleted /
+  // frameWin have been paid out for this challenge — guards against
+  // double-awarding when more than one member's client notices the
+  // "completed" status at once. Absent (undefined) is equivalent to false.
+  rewardsGranted?: boolean;
 }
 
-// /circles/{circleId}/challenges/{challengeId}/snaps/{snapId}
+// /circles/{circleId}/snaps/{snapId}
+// Snaps live at the circle level, not nested under a challenge — a
+// circle member can send a photo any time. challengeId/teamId are only
+// set when there was an active challenge at the moment of posting (and
+// the sender was on a team for it); both are null for a plain,
+// unscored snap sent just to hang out with the circle.
 export interface SnapDoc {
   userId: string;
-  teamId: string;
+  teamId: string | null;
+  challengeId: string | null;
   imageUrl: string;
   frameId: string | null;
   submittedAt: Timestamp;

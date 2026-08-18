@@ -11,15 +11,19 @@ import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, firestore } from "./firebaseConfig";
 import type { UserProfile } from "./types";
 
-export async function signUpWithEmail(email: string, password: string, displayName: string) {
+export async function signUpWithEmail(email: string, password: string, firstName: string, surname: string) {
+  const displayName = [firstName, surname].filter(Boolean).join(" ").trim() || email;
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(credential.user, { displayName });
 
   const profile: Omit<UserProfile, "createdAt"> & { createdAt: ReturnType<typeof serverTimestamp> } = {
+    firstName,
+    surname,
     displayName,
     email,
     avatarUrl: null,
-    stats: { challengesCompleted: 0, streak: 0 },
+    avatarId: null,
+    stats: { challengesCompleted: 0, streak: 0, totalSnaps: 0 },
     unlockedFrames: [],
     createdAt: serverTimestamp(),
   };

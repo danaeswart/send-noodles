@@ -1,6 +1,9 @@
 // This file sets up the app's one connection to Firebase and hands out
-// the three pieces the rest of the app needs: `auth` (sign up/log in),
-// `firestore` (the database), and `storage` (file/image uploads).
+// the two pieces the rest of the app needs: `auth` (sign up/log in) and
+// `firestore` (the database). Snap photos are NOT stored here — Cloud
+// Storage for Firebase requires the paid Blaze plan, so images upload
+// to Cloudinary instead (see cloudinary/upload.ts); only each snap's
+// resulting Cloudinary URL is written to Firestore.
 // Every other file that needs Firebase imports from HERE rather than
 // creating its own connection — see firebase/auth.ts for an example
 // that imports `auth` from this file to implement logInWithEmail etc.
@@ -16,13 +19,12 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 // map does have the correct React Native build.
 import { initializeAuth, getAuth, getReactNativePersistence, type Auth } from "@firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Firebase project: "noodles".
 // These values identify which Firebase project this app talks to. They
 // are NOT secret (they're baked into every client build and are safe to
-// commit) — access control is enforced server-side by Firestore/Storage
+// commit) — access control is enforced server-side by Firestore
 // security rules, not by hiding this object. Get these values from the
 // Firebase console: Project settings (gear icon) > General > Your apps
 // > SDK setup and configuration > Config.
@@ -64,9 +66,7 @@ try {
 }
 
 // firestore: the NoSQL database — circles, challenges, snaps, profiles.
-// storage: file storage — where uploaded snap photos/avatars actually live.
 const firestore = getFirestore(app);
-const storage = getStorage(app);
 
 // Exported for other files to import instead of repeating this setup.
-export { app, auth, firestore, storage };
+export { app, auth, firestore };

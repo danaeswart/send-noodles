@@ -18,11 +18,15 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 // modal-style tasks (review a just-captured photo, drill into one
 // circle's history) rather than part of the horizontal deck itself.
 //
-// initialRouteName is decided by the persisted Firebase auth session:
-// a returning signed-in user lands straight on Main instead of Login.
-// Rendering the navigator is held until that session finishes
-// restoring from AsyncStorage, so a signed-in user never flashes the
-// login screen first.
+// Rendering the navigator is held until the persisted Firebase auth
+// session finishes restoring from AsyncStorage, so a signed-in user
+// never flashes the login screen first.
+//
+// The signed-in and signed-out screens are two separate <Stack.Screen>
+// groups switched on `user`, rather than a single stack with a fixed
+// initialRouteName — initialRouteName only picks the starting route on
+// first mount, so it wouldn't react to a later sign-out (or sign-in)
+// and navigate the user anywhere.
 export default function RootNavigator() {
   const { user, loading } = useAuthUser();
 
@@ -32,17 +36,24 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName={user ? "Main" : "Login"} screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="SignUp" component={SignUpScreen} />
-        <Stack.Screen name="Main" component={SwipeNavigator} />
-        <Stack.Screen
-          name="SnapReview"
-          component={SnapReviewScreen}
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen name="CircleDetail" component={CircleDetailScreen} />
-        <Stack.Screen name="ChallengeSetup" component={ChallengeSetupScreen} />
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {user ? (
+          <>
+            <Stack.Screen name="Main" component={SwipeNavigator} />
+            <Stack.Screen
+              name="SnapReview"
+              component={SnapReviewScreen}
+              options={{ presentation: "modal" }}
+            />
+            <Stack.Screen name="CircleDetail" component={CircleDetailScreen} />
+            <Stack.Screen name="ChallengeSetup" component={ChallengeSetupScreen} />
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="SignUp" component={SignUpScreen} />
+          </>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

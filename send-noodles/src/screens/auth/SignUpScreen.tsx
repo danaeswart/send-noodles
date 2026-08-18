@@ -27,8 +27,7 @@ export default function SignUpScreen({ navigation }: Props) {
     setError(null);
     setIsSubmitting(true);
     try {
-      const displayName = [firstName, surname].filter(Boolean).join(" ").trim() || email;
-      await signUpWithEmail(email.trim(), password, displayName);
+      await signUpWithEmail(email.trim(), password, firstName.trim(), surname.trim());
       navigation.replace("Main");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't create your account. Try again.");

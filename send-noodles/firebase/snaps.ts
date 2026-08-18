@@ -2,79 +2,67 @@ import {
   collection,
   collectionGroup,
   doc,
-  getDoc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
   where,
   type DocumentReference,
   type Unsubscribe,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
-import { firestore, storage } from "./firebaseConfig";
+import { firestore } from "./firebaseConfig";
 import { addScoringEvent } from "./challenges";
-import type { ChallengeDoc, SnapDoc, WithId } from "./types";
+import { uploadImageToCloudinary } from "../cloudinary/upload";
+import type { SnapDoc, WithId } from "./types";
 
-function snapsCol(circleId: string, challengeId: string) {
-  return collection(firestore, "circles", circleId, "challenges", challengeId, "snaps");
-}
-
-function challengeRef(circleId: string, challengeId: string) {
-  return doc(firestore, "circles", circleId, "challenges", challengeId);
+function snapsCol(circleId: string) {
+  return collection(firestore, "circles", circleId, "snaps");
 }
 
 type SubmitSnapArgs = {
   circleId: string;
-  challengeId: string;
   userId: string;
-  teamId: string;
   photoUri: string;
   frameId?: string | null;
+  // The circle's active challenge and the sender's team on it, if any —
+  // both are optional because a circle member can send a snap at any
+  // time. The challenge is just a fun extra: with no active challenge
+  // (or the sender not yet on a team for it), the photo still saves and
+  // shows up in the circle's snaps, it just doesn't score.
+  challengeId?: string | null;
+  teamId?: string | null;
 };
 
-// Points awarded per accepted snap. The brief only specifies *how*
-// scores must be tracked (a scoringEvents doc per event, summed
-// client-side) — not the actual point values, so this is a simple flat
-// default; tune per-eventType if/when real scoring rules are decided.
-const POINTS_PER_SNAP = 10;
+// Points awarded per snap that counts toward an active challenge.
+const POINTS_PER_SNAP = 1;
 
-// Uploads to Storage, then creates the Firestore snap doc, then logs a
-// scoringEvent — in that order, so a failed upload never produces a
-// dangling/incomplete snap doc. Rejects client-side if the challenge
-// isn't active, or (for time_sensitive challenges) if endsAt has
-// already passed — mirrors the server-side check in firestore.rules.
-export async function submitSnap({ circleId, challengeId, userId, teamId, photoUri, frameId }: SubmitSnapArgs) {
-  const challengeSnap = await getDoc(challengeRef(circleId, challengeId));
-  if (!challengeSnap.exists()) throw new Error("Challenge not found.");
-  const challenge = challengeSnap.data() as ChallengeDoc;
+// Uploads to Cloudinary, then creates the Firestore snap doc, in that
+// order, so a failed upload never produces a dangling/incomplete snap
+// doc. The challenge/team args are trusted at face value from the
+// caller for the UX (avoids blocking a send on a network round-trip
+// here), but firestore.rules independently re-verifies server-side that
+// the referenced challenge is genuinely active before allowing the
+// write to claim it — a stale or spoofed challengeId is rejected, not
+// silently scored.
+export async function submitSnap({ circleId, userId, photoUri, frameId, challengeId = null, teamId = null }: SubmitSnapArgs) {
+  const snapRef = doc(snapsCol(circleId));
 
-  if (challenge.status !== "active") {
-    throw new Error("This challenge isn't active — nothing to submit to.");
-  }
-  if (
-    challenge.promptType === "time_sensitive" &&
-    challenge.timeline.endsAt &&
-    challenge.timeline.endsAt.toMillis() <= Date.now()
-  ) {
-    throw new Error("Time's up — this challenge's window has closed.");
-  }
+  const imageUrl = await uploadImageToCloudinary({
+    uri: photoUri,
+    publicId: snapRef.id,
+    folder: `send-noodles/circles/${circleId}/${userId}`,
+  });
 
-  const snapRef = doc(snapsCol(circleId, challengeId));
-
-  const response = await fetch(photoUri);
-  const blob = await response.blob();
-  const storagePath = `snaps/users/${userId}/${challengeId}_${snapRef.id}.jpg`;
-  const storageRef = ref(storage, storagePath);
-  await uploadBytes(storageRef, blob);
-  const imageUrl = await getDownloadURL(storageRef);
+  const countsTowardChallenge = !!challengeId && !!teamId;
 
   const snap: Omit<SnapDoc, "submittedAt"> & { submittedAt: ReturnType<typeof serverTimestamp> } = {
     userId,
-    teamId,
+    teamId: countsTowardChallenge ? teamId : null,
+    challengeId: countsTowardChallenge ? challengeId : null,
     imageUrl,
     frameId: frameId ?? null,
     submittedAt: serverTimestamp(),
@@ -82,17 +70,22 @@ export async function submitSnap({ circleId, challengeId, userId, teamId, photoU
   };
   await setDoc(snapRef, snap);
 
-  await addScoringEvent(circleId, challengeId, userId, teamId, "snap_submitted", POINTS_PER_SNAP);
+  if (countsTowardChallenge) {
+    await addScoringEvent(circleId, challengeId!, userId, teamId!, "snap_submitted", POINTS_PER_SNAP);
+  }
 
   return snapRef.id;
 }
 
-export function subscribeToChallengeSnaps(
-  circleId: string,
-  challengeId: string,
-  callback: (snaps: WithId<SnapDoc>[]) => void
-): Unsubscribe {
-  const q = query(snapsCol(circleId, challengeId), orderBy("submittedAt", "asc"));
+export function subscribeToTodaysSnaps(circleId: string, callback: (snaps: WithId<SnapDoc>[]) => void): Unsubscribe {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const q = query(
+    snapsCol(circleId),
+    where("submittedAt", ">=", Timestamp.fromDate(startOfToday)),
+    orderBy("submittedAt", "desc")
+  );
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as SnapDoc) })));
   });
@@ -100,15 +93,14 @@ export function subscribeToChallengeSnaps(
 
 export type GallerySnap = WithId<SnapDoc> & { ref: DocumentReference };
 
-// Every snap a user has ever submitted, across every circle/challenge —
-// backs the personal Gallery Wall. Requires a Firestore index on the
-// "snaps" collection group for the "userId" field; Firestore will
-// throw with a direct console link to create it the first time this
-// runs against a project that doesn't have it yet. An error handler is
-// required here (not just the success callback) — without one, that
-// throw is uncaught and trips React Native's red-screen LogBox instead
-// of just leaving the Gallery Wall empty until the index finishes
-// building.
+// Every snap a user has ever submitted, across every circle — backs the
+// personal Gallery Wall. Requires a Firestore index on the "snaps"
+// collection group for the "userId" field; Firestore will throw with a
+// direct console link to create it the first time this runs against a
+// project that doesn't have it yet. An error handler is required here
+// (not just the success callback) — without one, that throw is
+// uncaught and trips React Native's red-screen LogBox instead of just
+// leaving the Gallery Wall empty until the index finishes building.
 export function subscribeToUserSnaps(userId: string, callback: (snaps: GallerySnap[]) => void): Unsubscribe {
   const q = query(collectionGroup(firestore, "snaps"), where("userId", "==", userId));
   return onSnapshot(

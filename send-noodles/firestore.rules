@@ -37,6 +37,42 @@ service cloud.firestore {
       allow update: if isCircleMember(circleId);
       allow delete: if false;
 
+      // /circles/{circleId}/snaps/{snapId} — a circle member can send a
+      // photo at any time, not just while a challenge is active. When
+      // challengeId is set, this re-verifies server-side that the
+      // referenced challenge is genuinely active (and, for
+      // time-sensitive prompts, not past its own endsAt) before letting
+      // the write claim it — a stale or spoofed challengeId is
+      // rejected outright rather than silently scored. challengeId ==
+      // null is always allowed: an unscored snap just for the circle.
+      match /snaps/{snapId} {
+        allow read: if isCircleMember(circleId);
+
+        allow create: if isCircleMember(circleId)
+          && request.auth.uid == request.resource.data.userId
+          && (
+            request.resource.data.challengeId == null ||
+            (
+              get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(request.resource.data.challengeId)).data.status == "active" &&
+              (
+                get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(request.resource.data.challengeId)).data.timeline.endsAt == null ||
+                request.time <= get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(request.resource.data.challengeId)).data.timeline.endsAt
+              )
+            )
+          );
+
+        // Write-once, with one narrow carve-out: the owner may still
+        // reposition their own snap on their Gallery Wall afterward.
+        // Every other field (imageUrl, userId, teamId, challengeId,
+        // submittedAt, frameId) is immutable once created.
+        allow update: if isSignedIn()
+          && request.auth.uid == resource.data.userId
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(["positionIndex", "wallOffset", "wallCrossFrac", "wallSize"]);
+
+        allow delete: if false;
+      }
+
       match /challenges/{challengeId} {
         allow read: if isCircleMember(circleId);
 
@@ -90,35 +126,6 @@ service cloud.firestore {
         );
 
         allow delete: if false;
-
-        match /snaps/{snapId} {
-          allow read: if isCircleMember(circleId);
-
-          // Create-only, and only while the challenge is actually
-          // active. For time-sensitive challenges this also rejects
-          // any submission after the challenge's own endsAt — compared
-          // against request.time, Firestore's own server clock at
-          // write time, so it can't be spoofed by a client with a
-          // wrong local clock.
-          allow create: if isCircleMember(circleId)
-            && request.auth.uid == request.resource.data.userId
-            && get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(challengeId)).data.status == "active"
-            && (
-              get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(challengeId)).data.timeline.endsAt == null ||
-              request.time <= get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(challengeId)).data.timeline.endsAt
-            );
-
-          // Write-once, with one narrow carve-out: the owner may still
-          // reposition their own snap on their Gallery Wall afterward.
-          // Every other field (imageUrl, userId, teamId, submittedAt,
-          // frameId) is immutable once created.
-          allow update: if isSignedIn()
-            && request.auth.uid == resource.data.userId
-            && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(["positionIndex", "wallOffset", "wallCrossFrac", "wallSize"]);
-
-          allow delete: if false;
-        }
 
         match /scoringEvents/{eventId} {
           allow read: if isCircleMember(circleId);

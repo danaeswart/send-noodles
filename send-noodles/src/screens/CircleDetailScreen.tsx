@@ -9,7 +9,7 @@ import { useAuthUser } from "../hooks/useAuthUser";
 import { useActiveChallenge } from "../hooks/useActiveChallenge";
 import { useChallengeAgreement } from "../hooks/useChallengeAgreement";
 import { useScoreboard } from "../hooks/useScoreboard";
-import { useChallengeSnaps } from "../hooks/useChallengeSnaps";
+import { useTodaysSnaps } from "../hooks/useTodaysSnaps";
 import { checkAndCompleteChallengeIfDone } from "../../firebase/challenges";
 import { removeMember } from "../../firebase/circles";
 import { toParticipants } from "../utils/participants";
@@ -26,7 +26,7 @@ export default function CircleDetailScreen() {
   const challengeId = circle?.activeChallengeId ?? null;
   const { challenge, myAgreement, canEdit, agree, decline } = useChallengeAgreement(circleId, challengeId, userId);
   const { totals, submittedUserIds } = useScoreboard(circleId, challengeId);
-  const snaps = useChallengeSnaps(circleId, challengeId);
+  const snaps = useTodaysSnaps(circleId);
   const [memberActionError, setMemberActionError] = useState<string | null>(null);
 
   // Opportunistic "completed" transition — there's no Cloud Function to
