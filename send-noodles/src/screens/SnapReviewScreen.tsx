@@ -87,7 +87,6 @@ export default function SnapReviewScreen() {
         circleId: circle.id,
         userId,
         photoUri,
-        frameId: null,
         challengeId: challengeIsActive ? challenge!.id : null,
         teamId,
       });

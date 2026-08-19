@@ -1,10 +1,15 @@
 import { Image, ImageSourcePropType, StyleProp, StyleSheet, View, ViewStyle } from "react-native";
-import { FrameKey } from "../../data/mockGallery";
+import { FrameKey } from "../../data/wallLayout";
 
 const FRAME_SOURCES: Record<FrameKey, ImageSourcePropType> = {
   frame1: require("../../../assets/frames/frame1.png"),
   frame2: require("../../../assets/frames/frame2.png"),
   frame3: require("../../../assets/frames/frame3.png"),
+  // Same art as the profile's reward badges (constants/frames.ts) —
+  // frameTen shares frame1's geometry, frameFrst/frameWin share frame3's.
+  frameFrst: require("../../../assets/frames/frameFrst.png"),
+  frameTen: require("../../../assets/frames/frameTen.png"),
+  frameWin: require("../../../assets/frames/frameWin.png"),
 };
 
 // Fraction of the frame's size taken up by its border on each side —
@@ -15,6 +20,9 @@ const FRAME_INSET: Record<FrameKey, number> = {
   frame1: 0.22,
   frame2: 0.15,
   frame3: 0.14,
+  frameFrst: 0.14,
+  frameTen: 0.22,
+  frameWin: 0.14,
 };
 
 type Props = {

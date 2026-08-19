@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dimensions, FlatList, LayoutChangeEvent, ListRenderItem, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
@@ -56,6 +56,25 @@ export default function CirclesScreen() {
 
   const pages: PageItem[] = [...circles.map((circle): PageItem => ({ kind: "circle", circle })), { kind: "create" }];
 
+  // After joining/creating a circle and navigating to its detail screen,
+  // coming back here doesn't reset the FlatList's native scroll offset —
+  // it just sits at the same pixel position, which the newly-inserted
+  // circle shifted to mean a different page than before (the circle IS
+  // in the list, just not the one currently on screen). Remembering
+  // which circle to land on and explicitly scrolling to it once it
+  // shows up in `pages` fixes that, whether the subscription reports it
+  // before or after the round trip to CircleDetail.
+  const flatListRef = useRef<FlatList<PageItem>>(null);
+  const [focusCircleId, setFocusCircleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focusCircleId) return;
+    const index = pages.findIndex((page) => page.kind === "circle" && page.circle.id === focusCircleId);
+    if (index === -1) return;
+    flatListRef.current?.scrollToIndex({ index, animated: false });
+    setFocusCircleId(null);
+  }, [focusCircleId, pages]);
+
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       scrollY.value = event.contentOffset.y;
@@ -69,6 +88,7 @@ export default function CirclesScreen() {
 
   const goToCircle = (circleId: string) => {
     setHiddenCircleId(null);
+    setFocusCircleId(circleId);
     navigation.navigate("CircleDetail", { circleId });
   };
 
@@ -102,9 +122,11 @@ export default function CirclesScreen() {
   return (
     <View style={styles.container} onLayout={onContainerLayout}>
       <AnimatedFlatList
+        ref={flatListRef}
         data={pages}
         keyExtractor={(item) => (item.kind === "circle" ? item.circle.id : "__create__")}
         renderItem={renderItem}
+        getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
         pagingEnabled
         showsVerticalScrollIndicator={false}
         decelerationRate="fast"

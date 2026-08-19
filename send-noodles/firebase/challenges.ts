@@ -59,9 +59,19 @@ export function subscribeToMyCircles(
   callback: (circles: WithId<CircleDoc>[]) => void
 ): Unsubscribe {
   const q = query(collection(firestore, "circles"), where("members", "array-contains", userId));
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as CircleDoc) })));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as CircleDoc) })));
+    },
+    // Without this, a rules-rejected query (or any other listener
+    // error) fails completely silently — the callback just never fires
+    // again and the Circles list quietly stays empty/stale forever,
+    // with nothing in the UI hinting why.
+    (error) => {
+      console.warn("[Circles] couldn't load your circles:", error.message);
+    }
+  );
 }
 
 export function subscribeToChallenge(

@@ -1,7 +1,7 @@
-import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { arrayRemove, arrayUnion, collection, doc, getDoc, runTransaction, updateDoc } from "firebase/firestore";
 
 import { firestore } from "./firebaseConfig";
-import type { ChallengeDoc, CircleDoc } from "./types";
+import type { ChallengeDoc, CircleDoc, JoinCodeDoc } from "./types";
 
 // Unambiguous alphabet — excludes 0/O/1/I/L so a code read aloud or
 // typed from a screenshot doesn't get miskeyed.
@@ -15,11 +15,20 @@ function randomCode(length = 6): string {
   return code;
 }
 
+function joinCodeRef(code: string) {
+  return doc(firestore, "joinCodes", code);
+}
+
+// Uniqueness is checked against the small, dedicated /joinCodes lookup
+// collection (a single get-by-id — cheap, and readable by any signed-in
+// user) rather than querying /circles directly: circles are member-only
+// to read, so a query across circles the caller isn't part of would be
+// rejected by firestore.rules.
 async function generateUniqueJoinCode(): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = randomCode();
-    const snap = await getDocs(query(collection(firestore, "circles"), where("joinCode", "==", code)));
-    if (snap.empty) return code;
+    const snap = await getDoc(joinCodeRef(code));
+    if (!snap.exists()) return code;
   }
   throw new Error("Couldn't generate a unique circle code. Try again.");
 }
@@ -29,6 +38,7 @@ export async function createCircle(name: string, creatorId: string): Promise<{ c
   if (!trimmedName) throw new Error("Give your circle a name.");
 
   const joinCode = await generateUniqueJoinCode();
+  const circleDocRef = doc(collection(firestore, "circles"));
   const circle: CircleDoc = {
     name: trimmedName,
     creatorId,
@@ -37,29 +47,43 @@ export async function createCircle(name: string, creatorId: string): Promise<{ c
     activeChallengeId: null,
     joinCode,
   };
-  const ref = await addDoc(collection(firestore, "circles"), circle);
-  return { circleId: ref.id, joinCode };
+
+  // Both docs are written together in a transaction so the circle and
+  // its lookup entry can never go out of sync — re-checks the code is
+  // still free right before claiming it, in case another client grabbed
+  // it in the gap since generateUniqueJoinCode's check above.
+  await runTransaction(firestore, async (transaction) => {
+    const existing = await transaction.get(joinCodeRef(joinCode));
+    if (existing.exists()) throw new Error("That code was just claimed by someone else — try again.");
+    transaction.set(circleDocRef, circle);
+    transaction.set(joinCodeRef(joinCode), { circleId: circleDocRef.id } satisfies JoinCodeDoc);
+  });
+
+  return { circleId: circleDocRef.id, joinCode };
 }
 
 export async function joinCircleByCode(code: string, userId: string): Promise<string> {
   const normalizedCode = code.trim().toUpperCase();
   if (!normalizedCode) throw new Error("Enter a circle code.");
 
-  const snap = await getDocs(query(collection(firestore, "circles"), where("joinCode", "==", normalizedCode)));
-  if (snap.empty) throw new Error("No circle found with that code.");
+  const codeSnap = await getDoc(joinCodeRef(normalizedCode));
+  if (!codeSnap.exists()) throw new Error("No circle found with that code.");
+  const { circleId } = codeSnap.data() as JoinCodeDoc;
 
-  const circleDoc = snap.docs[0];
-  const circle = circleDoc.data() as CircleDoc;
-  if (circle.members.includes(userId)) return circleDoc.id;
-
-  await updateDoc(doc(firestore, "circles", circleDoc.id), { members: arrayUnion(userId) });
+  // arrayUnion is idempotent, so no need to check membership first —
+  // and doing so would fail anyway, since reading a circle you're not
+  // yet a member of isn't allowed until this write makes you one.
+  await updateDoc(doc(firestore, "circles", circleId), { members: arrayUnion(userId) });
 
   // If a challenge is currently in progress, the new member gets the
   // same pending invite to it any existing member would see — added
   // once here rather than left out just because they joined the circle
-  // after the challenge was already proposed.
-  if (circle.activeChallengeId) {
-    const challengeDocRef = doc(firestore, "circles", circleDoc.id, "challenges", circle.activeChallengeId);
+  // after the challenge was already proposed. Safe to read the circle
+  // now: the write above just made this user a member.
+  const circleSnap = await getDoc(doc(firestore, "circles", circleId));
+  const circle = circleSnap.data() as CircleDoc | undefined;
+  if (circle?.activeChallengeId) {
+    const challengeDocRef = doc(firestore, "circles", circleId, "challenges", circle.activeChallengeId);
     const challengeSnap = await getDoc(challengeDocRef);
     if (challengeSnap.exists()) {
       const challenge = challengeSnap.data() as ChallengeDoc;
@@ -71,7 +95,7 @@ export async function joinCircleByCode(code: string, userId: string): Promise<st
     }
   }
 
-  return circleDoc.id;
+  return circleId;
 }
 
 // A member leaving of their own accord — unlike removeMember, there's

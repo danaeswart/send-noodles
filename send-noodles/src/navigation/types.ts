@@ -6,4 +6,7 @@
   CircleDetail: { circleId?: string } | undefined;
   ChallengeSetup: { circleId: string };
   Members: { circleId: string };
+  Memories: undefined;
+  MemoryDetail: { snapId: string };
+  ChooseFrame: { snapId: string };
 };

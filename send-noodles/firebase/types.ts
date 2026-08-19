@@ -34,6 +34,14 @@ export interface CircleDoc {
   joinCode: string;
 }
 
+// /joinCodes/{code} — id is the code itself. A minimal, readable-by-any-
+// signed-in-user lookup from an invite code to the circle it belongs
+// to, kept separate from /circles (member-only to read) so joining
+// doesn't require exposing circles' private data to non-members.
+export interface JoinCodeDoc {
+  circleId: string;
+}
+
 export type PromptType = "daily" | "time_sensitive";
 export type ChallengeStatus = "setup" | "locked" | "active" | "completed";
 export type AgreementState = "pending" | "agreed" | "declined";
@@ -71,14 +79,31 @@ export interface ChallengeDoc {
 // circle member can send a photo any time. challengeId/teamId are only
 // set when there was an active challenge at the moment of posting (and
 // the sender was on a team for it); both are null for a plain,
-// unscored snap sent just to hang out with the circle.
+// unscored snap sent just to hang out with the circle. Genuinely
+// write-once: nothing about a circle snap is ever edited after
+// creation (Gallery Wall placement/frame/onWall live on the sender's
+// own PersonalSnapDoc mirror instead, below).
 export interface SnapDoc {
   userId: string;
   teamId: string | null;
   challengeId: string | null;
   imageUrl: string;
-  frameId: string | null;
   submittedAt: Timestamp;
+}
+
+// /users/{userId}/snaps/{snapId} — written alongside the circle-scoped
+// SnapDoc above, at the same id, every time submitSnap runs (see
+// firebase/snaps.ts). This is the sender's own personal copy: every
+// photo they've ever sent, to any circle, in one place — what backs
+// the Memories grid and the Gallery Wall, independent of which circle
+// (or how many) it was actually sent to. A plain single-collection
+// query against a user's own subcollection needs no special Firestore
+// index, unlike the collectionGroup query this replaced.
+export interface PersonalSnapDoc {
+  circleId: string;
+  imageUrl: string;
+  submittedAt: Timestamp;
+  frameId: string | null;
   // Integer order/rank of this snap on the user's Gallery Wall; null
   // until the user has placed it. wallOffset/wallCrossFrac/wallSize are
   // additive fields beyond the base schema — the existing Gallery Wall
@@ -89,6 +114,10 @@ export interface SnapDoc {
   wallOffset?: number;
   wallCrossFrac?: number;
   wallSize?: number;
+  // True once the user has deliberately added this snap to their
+  // Gallery Wall (via the Memories -> choose a frame flow) — absent/false
+  // snaps still show up in Memories, just not on the wall itself.
+  onWall?: boolean;
 }
 
 // /circles/{circleId}/challenges/{challengeId}/scoringEvents/{eventId}

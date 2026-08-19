@@ -1,15 +1,14 @@
 import {
   collection,
-  collectionGroup,
   doc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
   Timestamp,
   updateDoc,
   where,
+  writeBatch,
   type DocumentReference,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -18,17 +17,20 @@ import { firestore } from "./firebaseConfig";
 import { addScoringEvent } from "./challenges";
 import { recordSnapSent } from "./users";
 import { uploadImageToCloudinary } from "../cloudinary/upload";
-import type { SnapDoc, WithId } from "./types";
+import type { PersonalSnapDoc, SnapDoc, WithId } from "./types";
 
 function snapsCol(circleId: string) {
   return collection(firestore, "circles", circleId, "snaps");
+}
+
+function personalSnapsCol(userId: string) {
+  return collection(firestore, "users", userId, "snaps");
 }
 
 type SubmitSnapArgs = {
   circleId: string;
   userId: string;
   photoUri: string;
-  frameId?: string | null;
   // The circle's active challenge and the sender's team on it, if any —
   // both are optional because a circle member can send a snap at any
   // time. The challenge is just a fun extra: with no active challenge
@@ -41,15 +43,16 @@ type SubmitSnapArgs = {
 // Points awarded per snap that counts toward an active challenge.
 const POINTS_PER_SNAP = 1;
 
-// Uploads to Cloudinary, then creates the Firestore snap doc, in that
-// order, so a failed upload never produces a dangling/incomplete snap
-// doc. The challenge/team args are trusted at face value from the
-// caller for the UX (avoids blocking a send on a network round-trip
-// here), but firestore.rules independently re-verifies server-side that
-// the referenced challenge is genuinely active before allowing the
-// write to claim it — a stale or spoofed challengeId is rejected, not
-// silently scored.
-export async function submitSnap({ circleId, userId, photoUri, frameId, challengeId = null, teamId = null }: SubmitSnapArgs) {
+// Uploads to Cloudinary, then writes two Firestore docs at the same id:
+// the circle-scoped SnapDoc (what the circle's feed/challenge scoring
+// reads) and a PersonalSnapDoc mirror under the sender's own /users/
+// {userId}/snaps (what Memories and the Gallery Wall read — every photo
+// this user has ever sent, to any circle, in one place). Both writes go
+// through a batch so they land atomically — a snap can't exist in the
+// circle's feed without also existing in the sender's personal archive.
+// The Cloudinary upload happens first, outside the batch, so a failed
+// upload never produces a dangling/incomplete pair of docs.
+export async function submitSnap({ circleId, userId, photoUri, challengeId = null, teamId = null }: SubmitSnapArgs) {
   const snapRef = doc(snapsCol(circleId));
 
   const imageUrl = await uploadImageToCloudinary({
@@ -65,11 +68,21 @@ export async function submitSnap({ circleId, userId, photoUri, frameId, challeng
     teamId: countsTowardChallenge ? teamId : null,
     challengeId: countsTowardChallenge ? challengeId : null,
     imageUrl,
-    frameId: frameId ?? null,
     submittedAt: serverTimestamp(),
-    positionIndex: null,
   };
-  await setDoc(snapRef, snap);
+
+  const personalSnap: Omit<PersonalSnapDoc, "submittedAt"> & { submittedAt: ReturnType<typeof serverTimestamp> } = {
+    circleId,
+    imageUrl,
+    frameId: null,
+    positionIndex: null,
+    submittedAt: serverTimestamp(),
+  };
+
+  const batch = writeBatch(firestore);
+  batch.set(snapRef, snap);
+  batch.set(doc(personalSnapsCol(userId), snapRef.id), personalSnap);
+  await batch.commit();
 
   if (countsTowardChallenge) {
     await addScoringEvent(circleId, challengeId!, userId, teamId!, "snap_submitted", POINTS_PER_SNAP);
@@ -96,35 +109,36 @@ export function subscribeToTodaysSnaps(circleId: string, callback: (snaps: WithI
   });
 }
 
-export type GallerySnap = WithId<SnapDoc> & { ref: DocumentReference };
+export type GallerySnap = WithId<PersonalSnapDoc> & { ref: DocumentReference };
 
-// Every snap a user has ever submitted, across every circle — backs the
-// personal Gallery Wall. Requires a Firestore index on the "snaps"
-// collection group for the "userId" field; Firestore will throw with a
-// direct console link to create it the first time this runs against a
-// project that doesn't have it yet. An error handler is required here
-// (not just the success callback) — without one, that throw is
-// uncaught and trips React Native's red-screen LogBox instead of just
-// leaving the Gallery Wall empty until the index finishes building.
-export function subscribeToUserSnaps(userId: string, callback: (snaps: GallerySnap[]) => void): Unsubscribe {
-  const q = query(collectionGroup(firestore, "snaps"), where("userId", "==", userId));
-  return onSnapshot(
-    q,
-    (snap) => {
-      callback(snap.docs.map((d) => ({ id: d.id, ref: d.ref, ...(d.data() as SnapDoc) })));
-    },
-    (error) => {
-      console.warn("[Gallery Wall] couldn't load snaps — Firestore index may still be building:", error.message);
-      callback([]);
-    }
-  );
+// Every snap a user has ever submitted, across every circle — backs
+// Memories and the personal Gallery Wall. A plain query against the
+// user's own /users/{userId}/snaps subcollection, so (unlike the
+// collectionGroup query this used to be) it needs no special Firestore
+// index and works the first time against any project.
+export function subscribeToPersonalSnaps(userId: string, callback: (snaps: GallerySnap[]) => void): Unsubscribe {
+  const q = query(personalSnapsCol(userId));
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ref: d.ref, ...(d.data() as PersonalSnapDoc) })));
+  });
 }
 
-export type WallPlacementPatch = Partial<Pick<SnapDoc, "positionIndex" | "wallOffset" | "wallCrossFrac" | "wallSize">>;
+export type WallPlacementPatch = Partial<
+  Pick<PersonalSnapDoc, "positionIndex" | "wallOffset" | "wallCrossFrac" | "wallSize" | "frameId" | "onWall">
+>;
 
-// The only mutation ever allowed on a snap doc after creation — moving
-// it around the Gallery Wall. firestore.rules restricts updates to
-// exactly these fields so the rest of the doc stays write-once.
+// The only mutations ever allowed on a personal snap doc after
+// creation — moving it around the Gallery Wall, picking its frame, and
+// adding/removing it from the wall. firestore.rules restricts updates
+// to exactly these fields so the rest of the doc stays write-once.
 export async function updateSnapWallPlacement(snapRef: DocumentReference, patch: WallPlacementPatch) {
   await updateDoc(snapRef, patch);
+}
+
+// Called from the Memories -> choose a frame flow. Deliberately leaves
+// wallOffset/wallCrossFrac/wallSize unset — useGalleryWall falls back to
+// a reasonable auto-layout position for any snap that doesn't have an
+// explicit one yet, same as it already does for positionIndex.
+export async function addSnapToWall(snapRef: DocumentReference, frameId: string) {
+  await updateSnapWallPlacement(snapRef, { frameId, onWall: true });
 }

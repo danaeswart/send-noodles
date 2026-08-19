@@ -82,13 +82,20 @@ export default function CircleDetailScreen() {
   const teamBLeading = teamBScore > teamAScore;
 
   const canStartTimer = challenge?.status === "locked" && challenge.promptType === "time_sensitive";
-  // While a challenge is pending everyone's response, hide the
-  // battle/teams (nothing's been played yet) and the bottom CTA (the
-  // join/decline buttons above are the only relevant action) — but
-  // snaps still send to the circle regardless of challenge status, so
-  // that section always stays visible.
+  // While the *group* is still deciding (nobody's played yet), hide the
+  // prompt/battle/teams and simplify the page to just the essentials —
+  // snaps still always show regardless, since sending to the circle
+  // never depends on challenge status.
   const isPendingInvite = challenge?.status === "setup";
-  const ctaLabel = canProposeChallenge ? "+ create challenge" : canStartTimer ? "▶ start challenge" : "challenge in progress";
+  // Shown whenever the group is still deciding (isPendingInvite — lets
+  // anyone, including the proposer, join/switch their answer up until
+  // it locks) OR this specific viewer still hasn't answered even though
+  // the group has already moved on — the case for someone who joined
+  // the circle after the challenge locked/went active (see
+  // joinCircleByCode): they still get to opt in, just onto a challenge
+  // that's already running for everyone else.
+  const canRespondToInvite = !!challenge && challenge.status !== "completed" && (isPendingInvite || myAgreement === "pending");
+  const ctaLabel = canProposeChallenge ? "+ create challenge" : "▶ start challenge";
 
   const handleCtaPress = () => {
     if (canProposeChallenge) navigation.navigate("ChallengeSetup", { circleId });
@@ -180,27 +187,17 @@ export default function CircleDetailScreen() {
           </View>
         </View>
 
-        {isPendingInvite && (
+        {canRespondToInvite && (
           <View style={styles.inviteButtonRow}>
-            <Pressable
-              style={[styles.inviteButton, myAgreement === "agreed" && styles.inviteButtonJoinedActive]}
-              onPress={() => void agree()}
-            >
-              <Text style={[styles.inviteButtonText, myAgreement === "agreed" && styles.inviteButtonTextActive]}>
-                join challenge
-              </Text>
+            <Pressable style={styles.inviteButton} onPress={() => void agree()}>
+              <Text style={styles.inviteButtonText}>join challenge</Text>
             </Pressable>
-            <Pressable
-              style={[styles.inviteButton, myAgreement === "declined" && styles.inviteButtonDeclinedActive]}
-              onPress={() => void decline()}
-            >
-              <Text style={[styles.inviteButtonText, myAgreement === "declined" && styles.inviteButtonTextActive]}>
-                decline
-              </Text>
+            <Pressable style={styles.inviteButton} onPress={() => void decline()}>
+              <Text style={styles.inviteButtonText}>decline</Text>
             </Pressable>
           </View>
         )}
-        {isPendingInvite && agreementError && <Text style={styles.errorText}>{agreementError}</Text>}
+        {canRespondToInvite && agreementError && <Text style={styles.errorText}>{agreementError}</Text>}
 
         {challenge && !isPendingInvite && (
           <>
@@ -247,11 +244,11 @@ export default function CircleDetailScreen() {
         </View>
         <Text style={styles.viewAllSnaps}>view all snaps →</Text>
 
-        {!isPendingInvite && (
+        {(canProposeChallenge || canStartTimer) && (
           <>
             <View style={styles.divider} />
 
-            <Pressable onPress={handleCtaPress} disabled={!canProposeChallenge && !canStartTimer}>
+            <Pressable onPress={handleCtaPress}>
               <Text style={styles.ctaText}>{ctaLabel}</Text>
             </Pressable>
             {actionError && <Text style={styles.errorText}>{actionError}</Text>}
@@ -301,10 +298,7 @@ const styles = StyleSheet.create({
     borderColor: colors.ink,
     alignItems: "center",
   },
-  inviteButtonJoinedActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  inviteButtonDeclinedActive: { backgroundColor: colors.alert, borderColor: colors.alert },
   inviteButtonText: { ...type.eyebrow, color: colors.ink, letterSpacing: 1 },
-  inviteButtonTextActive: { color: colors.paper },
   battleHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.sm },
   leadingLabel: { ...type.caption, color: colors.accent, letterSpacing: 2 },
   battleRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.lg, marginBottom: spacing.lg },

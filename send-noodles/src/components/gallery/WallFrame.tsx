@@ -12,7 +12,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import FramedPhoto from "./FramedPhoto";
-import { WallPhoto } from "../../data/mockGallery";
+import { WallPhoto } from "../../data/wallLayout";
 import { screenDeltaToLocal } from "../../utils/wallRotation";
 
 const LONG_PRESS_MS = 350;
@@ -128,7 +128,7 @@ export default function WallFrame({ photo, screenWidth, editing, onEnterEdit, on
           animatedStyle,
         ]}
       >
-        <FramedPhoto frame={base.frame} size={base.size} />
+        <FramedPhoto frame={base.frame} photo={{ uri: base.imageUrl }} size={base.size} />
       </Animated.View>
     </GestureDetector>
   );

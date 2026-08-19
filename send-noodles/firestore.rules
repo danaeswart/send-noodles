@@ -12,6 +12,18 @@ service cloud.firestore {
         request.auth.uid in get(/databases/$(database)/documents/circles/$(circleId)).data.members;
     }
 
+    // A non-member joining via an invite code has to be able to write
+    // themselves into `members` before isCircleMember would ever be
+    // true for them — this is the one, narrow exception: the caller may
+    // add ONLY their own uid to `members` and change nothing else about
+    // the circle, and only if they weren't already a member.
+    function isSelfJoin() {
+      return isSignedIn() &&
+        !(request.auth.uid in resource.data.members) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["members"]) &&
+        request.resource.data.members == resource.data.members.concat([request.auth.uid]);
+    }
+
     // /users/{userId} — every user can read any profile (display names
     // are shown across circles). Creating/renaming/etc. a profile is
     // always restricted to its own owner. Updates get one narrow
@@ -30,6 +42,27 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["stats", "unlockedFrames"])
       );
       allow delete: if false;
+
+      // /users/{userId}/snaps/{snapId} — the owner's personal mirror of
+      // every snap they've ever sent (see submitSnap), independent of
+      // circle membership. Owner-only in both directions: this is a
+      // private, personal archive, not something other users read.
+      match /snaps/{snapId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow create: if isSignedIn() && request.auth.uid == userId;
+
+        // Write-once, with one narrow carve-out: the owner may still
+        // reposition this snap on their Gallery Wall, pick a frame for
+        // it, and flip onWall when adding/removing it from the wall via
+        // the Memories flow. Every other field (circleId, imageUrl,
+        // submittedAt) is immutable once created.
+        allow update: if isSignedIn()
+          && request.auth.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(["positionIndex", "wallOffset", "wallCrossFrac", "wallSize", "frameId", "onWall"]);
+
+        allow delete: if false;
+      }
     }
 
     // /prompts/{promptId} — shared content bank. Any signed-in user can
@@ -41,12 +74,24 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // /joinCodes/{code} — a lightweight code -> circleId lookup, kept
+    // separate from /circles (which stays member-only to read) so a
+    // non-member can resolve an invite code to find which circle to
+    // join without exposing the whole circles collection — its
+    // members, wagers, join codes — to enumeration by anyone signed in.
+    match /joinCodes/{code} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
     match /circles/{circleId} {
       allow read: if isCircleMember(circleId);
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.creatorId
         && request.auth.uid in request.resource.data.members;
-      allow update: if isCircleMember(circleId);
+      allow update: if isCircleMember(circleId) || isSelfJoin();
       allow delete: if false;
 
       // /circles/{circleId}/snaps/{snapId} — a circle member can send a
@@ -73,14 +118,10 @@ service cloud.firestore {
             )
           );
 
-        // Write-once, with one narrow carve-out: the owner may still
-        // reposition their own snap on their Gallery Wall afterward.
-        // Every other field (imageUrl, userId, teamId, challengeId,
-        // submittedAt, frameId) is immutable once created.
-        allow update: if isSignedIn()
-          && request.auth.uid == resource.data.userId
-          && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(["positionIndex", "wallOffset", "wallCrossFrac", "wallSize"]);
+        // Genuinely write-once now — Gallery Wall placement/frame/onWall
+        // moved to the sender's personal snap mirror below, so nothing
+        // about a circle snap is ever edited after creation.
+        allow update: if false;
 
         allow delete: if false;
       }

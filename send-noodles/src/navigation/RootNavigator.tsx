@@ -6,6 +6,9 @@ import SnapReviewScreen from "../screens/SnapReviewScreen";
 import CircleDetailScreen from "../screens/CircleDetailScreen";
 import ChallengeSetupScreen from "../screens/ChallengeSetupScreen";
 import MembersScreen from "../screens/MembersScreen";
+import MemoriesScreen from "../screens/MemoriesScreen";
+import MemoryDetailScreen from "../screens/MemoryDetailScreen";
+import ChooseFrameScreen from "../screens/ChooseFrameScreen";
 import LoginScreen from "../screens/auth/LoginScreen";
 import SignUpScreen from "../screens/auth/SignUpScreen";
 import { RootStackParamList } from "./types";
@@ -49,6 +52,9 @@ export default function RootNavigator() {
             <Stack.Screen name="CircleDetail" component={CircleDetailScreen} />
             <Stack.Screen name="ChallengeSetup" component={ChallengeSetupScreen} />
             <Stack.Screen name="Members" component={MembersScreen} />
+            <Stack.Screen name="Memories" component={MemoriesScreen} />
+            <Stack.Screen name="MemoryDetail" component={MemoryDetailScreen} />
+            <Stack.Screen name="ChooseFrame" component={ChooseFrameScreen} />
           </>
         ) : (
           <>

@@ -1,13 +1,18 @@
 import { useCallback, useState } from "react";
 import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
 import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 
 import WallFrame, { WallPhotoPatch } from "../components/gallery/WallFrame";
-import { WALL_SCROLL_LENGTH } from "../data/mockGallery";
+import { WALL_SCROLL_LENGTH } from "../data/wallLayout";
 import { WALL_ROTATE_DEG } from "../utils/wallRotation";
 import { useAuthUser } from "../hooks/useAuthUser";
 import { useGalleryWall } from "../hooks/useGalleryWall";
+import { RootStackParamList } from "../navigation/types";
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -27,6 +32,7 @@ const chromeOffset = rotatedOffset(SCREEN_HEIGHT, SCREEN_WIDTH);
 const canvasOffset = rotatedOffset(WALL_SCROLL_LENGTH, SCREEN_WIDTH);
 
 export default function GalleryWallScreen() {
+  const navigation = useNavigation<NavigationProp>();
   const { user } = useAuthUser();
   const { wallPhotos, updatePosition } = useGalleryWall(user?.uid ?? null);
   const [isEditing, setIsEditing] = useState(false);
@@ -137,10 +143,10 @@ export default function GalleryWallScreen() {
             },
           ]}
         >
-          <View style={styles.memoryBox}>
+          <Pressable style={styles.memoryBox} onPress={() => navigation.navigate("Memories")}>
             <View style={styles.memoryLabel} />
             <Text style={styles.memoryText}>Memories</Text>
-          </View>
+          </Pressable>
         </View>
       </Animated.View>
     </View>
