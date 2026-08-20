@@ -49,31 +49,32 @@ export default function CirclesScreen() {
   // subscription reports it, it gets inserted before the create page,
   // shifting that page to a new index and making the fixed-pixel scroll
   // offset land on the new circle's page instead (looks like the deck
-  // "scrolled up" out from under the user). Clearing it in goToCircle
-  // lets it rejoin the list once they've navigated away.
+  // "scrolled up" out from under the user). Clearing it in revealCircle
+  // lets it rejoin the list once the user asks to see it.
   const [hiddenCircleId, setHiddenCircleId] = useState<string | null>(null);
   const circles = useMyCircles(userId).filter((circle) => circle.id !== hiddenCircleId);
 
   const pages: PageItem[] = [...circles.map((circle): PageItem => ({ kind: "circle", circle })), { kind: "create" }];
 
-  // After joining/creating a circle and navigating to its detail screen,
-  // coming back here doesn't reset the FlatList's native scroll offset —
-  // it just sits at the same pixel position, which the newly-inserted
-  // circle shifted to mean a different page than before (the circle IS
-  // in the list, just not the one currently on screen). Remembering
-  // which circle to land on and explicitly scrolling to it once it
-  // shows up in `pages` fixes that, whether the subscription reports it
-  // before or after the round trip to CircleDetail.
+  // Scrolling to a given circle's page has two callers with different
+  // feel: landing back here after CircleDetail should snap instantly (no
+  // animation) to wherever that circle now sits, while "view circle" /
+  // "join circle" on the create panel should visibly scroll up to reveal
+  // the card that was just created/joined. Both share the same
+  // find-index-and-scroll effect since the target circle may not be in
+  // `pages` yet the moment the action fires — e.g. a just-joined circle
+  // only appears once Firestore's subscription reports it — so this
+  // re-runs whenever `pages` changes until the scroll actually lands.
   const flatListRef = useRef<FlatList<PageItem>>(null);
-  const [focusCircleId, setFocusCircleId] = useState<string | null>(null);
+  const [pendingScroll, setPendingScroll] = useState<{ circleId: string; animated: boolean } | null>(null);
 
   useEffect(() => {
-    if (!focusCircleId) return;
-    const index = pages.findIndex((page) => page.kind === "circle" && page.circle.id === focusCircleId);
+    if (!pendingScroll) return;
+    const index = pages.findIndex((page) => page.kind === "circle" && page.circle.id === pendingScroll.circleId);
     if (index === -1) return;
-    flatListRef.current?.scrollToIndex({ index, animated: false });
-    setFocusCircleId(null);
-  }, [focusCircleId, pages]);
+    flatListRef.current?.scrollToIndex({ index, animated: pendingScroll.animated });
+    setPendingScroll(null);
+  }, [pendingScroll, pages]);
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -88,8 +89,18 @@ export default function CirclesScreen() {
 
   const goToCircle = (circleId: string) => {
     setHiddenCircleId(null);
-    setFocusCircleId(circleId);
+    setPendingScroll({ circleId, animated: false });
     navigation.navigate("CircleDetail", { circleId });
+  };
+
+  // "view circle" after creating one, and "join circle" after entering a
+  // code, don't jump straight into CircleDetail — they reveal the
+  // circle's own card in this deck (scrolling up to it) so the user sees
+  // it join their list, and lands on CircleDetail only if they then tap
+  // that card themselves.
+  const revealCircle = (circleId: string) => {
+    setHiddenCircleId(null);
+    setPendingScroll({ circleId, animated: true });
   };
 
   const renderItem: ListRenderItem<PageItem> = ({ item, index }) => {
@@ -99,7 +110,7 @@ export default function CirclesScreen() {
           userId={userId}
           pageHeight={pageHeight}
           onCircleCreated={setHiddenCircleId}
-          onCircleReady={goToCircle}
+          onCircleReady={revealCircle}
         />
       );
     }

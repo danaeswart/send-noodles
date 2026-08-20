@@ -41,7 +41,9 @@ service cloud.firestore {
         request.auth.uid == userId ||
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["stats", "unlockedFrames"])
       );
-      allow delete: if false;
+      // Only the owner may delete their own profile — part of the
+      // account-deletion flow (see deleteAccount in firebase/auth.ts).
+      allow delete: if isSignedIn() && request.auth.uid == userId;
 
       // /users/{userId}/snaps/{snapId} — the owner's personal mirror of
       // every snap they've ever sent (see submitSnap), independent of
@@ -61,7 +63,10 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(["positionIndex", "wallOffset", "wallCrossFrac", "wallSize", "frameId", "onWall"]);
 
-        allow delete: if false;
+        // Owner-only delete — part of the account-deletion flow (see
+        // deleteAccount in firebase/auth.ts), which wipes this personal
+        // archive before removing the profile doc and Auth account.
+        allow delete: if isSignedIn() && request.auth.uid == userId;
       }
     }
 
@@ -72,6 +77,25 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
       allow update, delete: if false;
+    }
+
+    // /promptLocks/{promptId} — exists only while some circle has this
+    // prompt attached to a challenge that hasn't reached "completed" yet
+    // (see PromptLockDoc / proposeChallenge / checkAndCompleteChallengeIfDone).
+    // Keeps two circles from ever running the same prompt at the same
+    // time. Read is unconditional (any signed-in user needs to fetch the
+    // whole collection to know which prompts are currently taken before
+    // proposing a challenge) but create/delete are restricted to a
+    // member of the circle the lock names, so only that circle can claim
+    // or release it.
+    match /promptLocks/{promptId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/circles/$(request.resource.data.circleId)).data.members
+        && request.resource.data.keys().hasOnly(["circleId", "challengeId"]);
+      allow update: if false;
+      allow delete: if isSignedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/circles/$(resource.data.circleId)).data.members;
     }
 
     // /joinCodes/{code} — a lightweight code -> circleId lookup, kept
@@ -87,7 +111,16 @@ service cloud.firestore {
     }
 
     match /circles/{circleId} {
-      allow read: if isCircleMember(circleId);
+      // Deliberately not isCircleMember(circleId) here: that helper
+      // re-fetches this same document via get() to check membership,
+      // and Firestore's rule engine can't correlate that indirection
+      // with a `where("members", "array-contains", uid)` query — it
+      // can't prove every possible result satisfies the rule, so it
+      // denies the whole list request outright ("Missing or
+      // insufficient permissions") rather than filtering per-doc.
+      // Reading resource.data directly avoids the indirection and lets
+      // list queries work exactly like get() does here.
+      allow read: if isSignedIn() && request.auth.uid in resource.data.members;
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.creatorId
         && request.auth.uid in request.resource.data.members;

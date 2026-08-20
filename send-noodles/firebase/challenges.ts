@@ -17,12 +17,13 @@ import {
 } from "firebase/firestore";
 
 import { firestore } from "./firebaseConfig";
-import { fetchRandomUnusedPrompt } from "./prompts";
+import { fetchLockedPromptIds, fetchRandomUnusedPrompt } from "./prompts";
 import type {
   AgreementState,
   ChallengeDoc,
   CircleDoc,
   PromptDoc,
+  PromptLockDoc,
   PromptType,
   ScoringEventDoc,
   UserProfile,
@@ -49,9 +50,19 @@ export function subscribeToCircle(
   circleId: string,
   callback: (circle: WithId<CircleDoc> | null) => void
 ): Unsubscribe {
-  return onSnapshot(circleRef(circleId), (snap) => {
-    callback(snap.exists() ? { id: snap.id, ...(snap.data() as CircleDoc) } : null);
-  });
+  return onSnapshot(
+    circleRef(circleId),
+    (snap) => {
+      callback(snap.exists() ? { id: snap.id, ...(snap.data() as CircleDoc) } : null);
+    },
+    // A member leaving this circle (including via account deletion,
+    // which leaves every circle it's in) makes an already-open listener
+    // on that circle doc permission-denied on its very next update —
+    // expected, not exceptional, so this treats it the same as the
+    // circle no longer existing rather than leaving it as an uncaught
+    // error logged straight from the Firestore SDK.
+    () => callback(null)
+  );
 }
 
 export function subscribeToMyCircles(
@@ -79,9 +90,16 @@ export function subscribeToChallenge(
   challengeId: string,
   callback: (challenge: WithId<ChallengeDoc> | null) => void
 ): Unsubscribe {
-  return onSnapshot(challengeRef(circleId, challengeId), (snap) => {
-    callback(snap.exists() ? { id: snap.id, ...(snap.data() as ChallengeDoc) } : null);
-  });
+  return onSnapshot(
+    challengeRef(circleId, challengeId),
+    (snap) => {
+      callback(snap.exists() ? { id: snap.id, ...(snap.data() as ChallengeDoc) } : null);
+    },
+    // Same reasoning as subscribeToCircle above — losing circle
+    // membership mid-listen denies this too, so treat it as "no
+    // challenge to show" instead of an uncaught SDK error.
+    () => callback(null)
+  );
 }
 
 export function subscribeToScoringEvents(
@@ -90,9 +108,13 @@ export function subscribeToScoringEvents(
   callback: (events: WithId<ScoringEventDoc>[]) => void
 ): Unsubscribe {
   const q = query(scoringEventsCol(circleId, challengeId), orderBy("timestamp", "asc"));
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as ScoringEventDoc) })));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as ScoringEventDoc) })));
+    },
+    () => callback([])
+  );
 }
 
 export async function addScoringEvent(
@@ -161,14 +183,21 @@ export async function proposeChallenge(
     }
   }
 
+  // A prompt already running as someone else's challenge is off-limits
+  // here too, on top of this circle's own usedPrompts — otherwise two
+  // circles could end up racing through the exact same prompt at once.
+  const lockedPromptIds = await fetchLockedPromptIds();
+  const excludedPromptIds = [...circle.usedPrompts, ...lockedPromptIds];
+
   const firstType: PromptType = Math.random() < 0.5 ? "daily" : "time_sensitive";
   const secondType: PromptType = firstType === "daily" ? "time_sensitive" : "daily";
   const prompt =
-    (await fetchRandomUnusedPrompt(firstType, circle.usedPrompts)) ??
-    (await fetchRandomUnusedPrompt(secondType, circle.usedPrompts));
+    (await fetchRandomUnusedPrompt(firstType, excludedPromptIds)) ??
+    (await fetchRandomUnusedPrompt(secondType, excludedPromptIds));
   if (!prompt) throw new Error("No prompts left for this circle.");
 
   const newChallengeRef = doc(challengesCol(circleId));
+  const promptLockRef = doc(firestore, "promptLocks", prompt.id);
   const proposerTeam = pickBalancedTeam({ team_1: [], team_2: [] });
 
   await runTransaction(firestore, async (transaction) => {
@@ -176,6 +205,14 @@ export async function proposeChallenge(
     const freshCircle = freshCircleSnap.data() as CircleDoc;
     if (freshCircle.usedPrompts.includes(prompt.id)) {
       throw new Error("That prompt was just used by someone else — try again.");
+    }
+
+    // Re-checked inside the transaction, not just via the fetch above —
+    // another circle's proposeChallenge could have claimed this exact
+    // prompt in the gap since fetchLockedPromptIds ran.
+    const lockSnap = await transaction.get(promptLockRef);
+    if (lockSnap.exists()) {
+      throw new Error("That prompt just got claimed by another circle — try again.");
     }
 
     const agreementStatus = initialAgreementStatus(freshCircle.members);
@@ -197,7 +234,10 @@ export async function proposeChallenge(
       createdAt: serverTimestamp() as unknown as Timestamp,
     };
 
+    const promptLock: PromptLockDoc = { circleId, challengeId: newChallengeRef.id };
+
     transaction.set(newChallengeRef, challenge);
+    transaction.set(promptLockRef, promptLock);
     transaction.update(circleRef(circleId), {
       usedPrompts: [...freshCircle.usedPrompts, prompt.id],
       activeChallengeId: newChallengeRef.id,
@@ -348,7 +388,15 @@ export async function checkAndCompleteChallengeIfDone(
   const everyoneSubmitted = totalMembers > 0 && submittedCount >= totalMembers;
 
   if (timeExpired || everyoneSubmitted) {
-    await updateDoc(challengeRef(circleId, challengeId), { status: "completed" });
+    // Completing the challenge and releasing its prompt lock happen in
+    // the same transaction — otherwise a client that crashed between two
+    // separate writes could leave the lock stranded, permanently barring
+    // every other circle from that prompt even though this challenge is
+    // done with it.
+    await runTransaction(firestore, async (transaction) => {
+      transaction.update(challengeRef(circleId, challengeId), { status: "completed" });
+      transaction.delete(doc(firestore, "promptLocks", challenge.promptId));
+    });
   }
 }
 

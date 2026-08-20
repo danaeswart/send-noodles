@@ -104,9 +104,16 @@ export function subscribeToTodaysSnaps(circleId: string, callback: (snaps: WithI
     where("submittedAt", ">=", Timestamp.fromDate(startOfToday)),
     orderBy("submittedAt", "desc")
   );
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as SnapDoc) })));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as SnapDoc) })));
+    },
+    // Leaving this circle (including via account deletion) denies this
+    // listener on its next update — expected, so it just goes quiet
+    // instead of logging as an uncaught Firestore SDK error.
+    () => callback([])
+  );
 }
 
 export type GallerySnap = WithId<PersonalSnapDoc> & { ref: DocumentReference };

@@ -137,3 +137,15 @@ export interface PromptDoc {
   difficulty: string;
   tags: string[];
 }
+
+// /promptLocks/{promptId} — exists only while some circle has this
+// prompt attached to a challenge that hasn't reached "completed" yet.
+// Keeps two circles from ever running the same prompt at the same time:
+// proposeChallenge excludes locked prompt ids from its candidate pool
+// and claims this doc atomically inside its transaction, and
+// checkAndCompleteChallengeIfDone deletes it the moment the challenge
+// completes, freeing the prompt for reuse elsewhere.
+export interface PromptLockDoc {
+  circleId: string;
+  challengeId: string;
+}

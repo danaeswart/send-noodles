@@ -35,3 +35,12 @@ export async function fetchRandomUnusedPrompt(
   if (candidates.length === 0) return null;
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
+
+// The /promptLocks collection is small (bounded by the number of
+// currently in-progress challenges across every circle), so — same
+// trade-off as fetchRandomUnusedPrompt above — it's cheaper to fetch it
+// whole and filter client-side than to check candidates one by one.
+export async function fetchLockedPromptIds(): Promise<string[]> {
+  const snapshot = await getDocs(collection(firestore, "promptLocks"));
+  return snapshot.docs.map((d) => d.id);
+}

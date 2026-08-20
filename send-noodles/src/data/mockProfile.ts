@@ -17,18 +17,6 @@ export const mockProfile = {
         description: "remind me before a challenge ends",
         enabled: true,
       },
-      {
-        id: "p2",
-        label: "Public profile",
-        description: "let others see your snaps",
-        enabled: true,
-      },
-      {
-        id: "p3",
-        label: "Dark frames",
-        description: "unlocked frame borders in dark ink",
-        enabled: false,
-      },
     ] as PreferenceToggle[],
   },
 };
