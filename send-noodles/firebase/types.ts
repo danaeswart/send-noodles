@@ -88,6 +88,7 @@ export interface SnapDoc {
   teamId: string | null;
   challengeId: string | null;
   imageUrl: string;
+  caption: string;
   submittedAt: Timestamp;
 }
 
@@ -102,6 +103,7 @@ export interface SnapDoc {
 export interface PersonalSnapDoc {
   circleId: string;
   imageUrl: string;
+  caption: string;
   submittedAt: Timestamp;
   frameId: string | null;
   // Integer order/rank of this snap on the user's Gallery Wall; null

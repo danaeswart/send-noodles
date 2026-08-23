@@ -49,6 +49,13 @@ export default function NoodleSentPage({ active, onDone }: Props) {
   );
 }
 
+// How far below its resting spot a piece starts (and, once it falls
+// back down, ends up) — comfortably past the bottom edge of the page
+// so it's fully clipped by the outer screen's overflow:hidden rather
+// than settling in view, the same way the page itself scrolls fully
+// off rather than stopping partway.
+const OFF_SCREEN_Y = 220;
+
 function ConfettiPiece({
   active,
   delay,
@@ -60,13 +67,13 @@ function ConfettiPiece({
   xOffset: number;
   rotateDir: 1 | -1;
 }) {
-  const translateY = useSharedValue(220);
+  const translateY = useSharedValue(OFF_SCREEN_Y);
   const opacity = useSharedValue(0);
   const rotate = useSharedValue(0);
 
   useEffect(() => {
     if (!active) {
-      translateY.value = 220;
+      translateY.value = OFF_SCREEN_Y;
       opacity.value = 0;
       rotate.value = 0;
       return;
@@ -75,8 +82,8 @@ function ConfettiPiece({
     translateY.value = withDelay(
       delay,
       withSequence(
-        withTiming(-160 - Math.random() * 60, { duration: 420, easing: Easing.out(Easing.cubic) }),
-        withTiming(40, { duration: 500, easing: Easing.in(Easing.cubic) }),
+        withTiming(-280 - Math.random() * 100, { duration: 460, easing: Easing.out(Easing.cubic) }),
+        withTiming(OFF_SCREEN_Y, { duration: 500, easing: Easing.in(Easing.cubic) }),
       ),
     );
     rotate.value = withDelay(delay, withTiming(rotateDir * 220, { duration: 900, easing: Easing.out(Easing.cubic) }));
@@ -89,20 +96,20 @@ function ConfettiPiece({
 
   return (
     <Animated.View style={[styles.piece, style]}>
-      <NoodleIcon size={30} />
+      <NoodleIcon size={56} />
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.ink, paddingHorizontal: spacing.lg, paddingTop: spacing.xxl * 1.5 },
-  headline: { ...type.serifDisplay, fontSize: 40, lineHeight: 44, color: colors.paper },
+  page: { flex: 1, backgroundColor: colors.paper, paddingHorizontal: spacing.lg, paddingTop: spacing.xxl * 1.5 },
+  headline: { ...type.serifDisplay, fontSize: 64, lineHeight: 68, color: colors.ink },
   confettiWrap: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 280,
+    height: 420,
     alignItems: "center",
     justifyContent: "flex-end",
   },

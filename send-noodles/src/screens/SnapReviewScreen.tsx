@@ -13,6 +13,16 @@ import { submitSnap } from "../../firebase/snaps";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
+type Props = {
+  // Set by SwipeNavigator when a challenge card on Home gets pressed
+  // and held — pre-picks that circle in the dropdown below instead of
+  // whichever circle would otherwise default to first. Optional since
+  // SnapReviewScreen is also pushed as its own modal stack screen (see
+  // RootNavigator) without this context.
+  preselectedCircleId?: string | null;
+  onConsumePreselectedCircle?: () => void;
+};
+
 // Combined capture + review + send flow as one continuous vertical
 // surface, same interaction language as HomeChallenges/ProfileScreen —
 // but with a deliberate twist: swipe DOWN on the capture page never
@@ -23,7 +33,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 // sent!" confirmation, which then scrolls back to the capture page on
 // its own. Swipe DOWN anywhere else on the send page cancels and
 // discards the photo, bouncing back up to the capture page.
-export default function SnapReviewScreen() {
+export default function SnapReviewScreen({ preselectedCircleId, onConsumePreselectedCircle }: Props) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [isPosting, setIsPosting] = useState(false);
@@ -43,6 +53,15 @@ export default function SnapReviewScreen() {
     }
   }, [circles, selectedCircleId]);
 
+  // A long-press on Home overrides whatever's selected, then clears
+  // itself in the parent so swiping back here later doesn't re-trigger.
+  useEffect(() => {
+    if (preselectedCircleId) {
+      setSelectedCircleId(preselectedCircleId);
+      onConsumePreselectedCircle?.();
+    }
+  }, [preselectedCircleId]);
+
   const { circle, challenge } = useActiveChallenge(selectedCircleId, userId);
 
   const translateY = useSharedValue(0);
@@ -60,7 +79,12 @@ export default function SnapReviewScreen() {
     setPhotoUri(uri);
   };
 
-  const handlePost = async () => {
+  // Fires the moment the noodle-drag send gesture completes — the
+  // "noodle sent!" page plays immediately rather than waiting on the
+  // upload/Firestore round trip, which runs in the background behind
+  // it. postError surfaces separately (see the fixed overlay below,
+  // outside the page stack) if that background submit ends up failing.
+  const handlePost = () => {
     if (!photoUri || isPosting) return;
     if (!userId || !circle) {
       setPostError("Pick a circle to send to first.");
@@ -82,20 +106,22 @@ export default function SnapReviewScreen() {
 
     setIsPosting(true);
     setPostError(null);
-    try {
-      await submitSnap({
-        circleId: circle.id,
-        userId,
-        photoUri,
-        challengeId: challengeIsActive ? challenge!.id : null,
-        teamId,
+    goToPage(2);
+
+    submitSnap({
+      circleId: circle.id,
+      userId,
+      photoUri,
+      caption: caption.trim(),
+      challengeId: challengeIsActive ? challenge!.id : null,
+      teamId,
+    })
+      .catch((err) => {
+        setPostError(err instanceof Error ? err.message : "Couldn't post your snap.");
+      })
+      .finally(() => {
+        setIsPosting(false);
       });
-      goToPage(2);
-    } catch (err) {
-      setPostError(err instanceof Error ? err.message : "Couldn't post your snap.");
-    } finally {
-      setIsPosting(false);
-    }
   };
 
   const handleSentDone = () => {
@@ -138,16 +164,16 @@ export default function SnapReviewScreen() {
             onSelectCircle={setSelectedCircleId}
             active={activePage === 1}
           />
-          {postError && (
-            <View style={styles.errorWrap} pointerEvents="none">
-              <Text style={styles.errorText}>{postError}</Text>
-            </View>
-          )}
         </View>
         <View style={styles.pageSlot}>
           <NoodleSentPage active={activePage === 2} onDone={handleSentDone} />
         </View>
       </Animated.View>
+      {postError && (
+        <View style={styles.errorWrap} pointerEvents="none">
+          <Text style={styles.errorText}>{postError}</Text>
+        </View>
+      )}
     </View>
   );
 }

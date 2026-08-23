@@ -9,4 +9,6 @@
   Memories: undefined;
   MemoryDetail: { snapId: string };
   ChooseFrame: { snapId: string };
+  CircleSnaps: { circleId: string; circleName?: string };
+  CircleSnapDetail: { circleId: string; snapId: string };
 };

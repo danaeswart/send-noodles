@@ -46,13 +46,15 @@ type Props = {
 // page automatically once the shake-reveal finishes — and swoop in
 // (circle from the top, caption + noodle from the bottom) each time the
 // page becomes active. Sending isn't a whole-page swipe: the user grabs
-// the noodle icon itself and drags it, free in any direction, while the
-// circle picker trails behind at reduced speed like it's being bumped
-// out of the way. Once the drag crosses the halfway point of the screen
-// the send commits and everything keeps sailing off the top even if the
-// finger lifts early; letting go before halfway springs it all back.
-// Swiping down anywhere else still cancels and discards the photo,
-// bouncing back up to the capture page.
+// the noodle icon itself and drags it around freely, like a normal
+// drag-and-drop, anywhere in the space below it (even down over the
+// hint text). Only dragging up past SEND_THRESHOLD commits a send —
+// at that point the circle picker trails up behind at reduced speed
+// like it's being bumped out of the way, and everything keeps sailing
+// off the top even if the finger lifts early. Letting go early (or
+// dropping the noodle anywhere that isn't past the threshold) springs
+// it back to rest. Swiping down anywhere else still cancels and
+// discards the photo, bouncing back up to the capture page.
 export default function SnapSendPage({
   photoUri,
   caption,
@@ -64,8 +66,15 @@ export default function SnapSendPage({
   onSelectCircle,
   active,
 }: Props) {
+  // dragX/dragY track the noodle's own free drag position — up, down,
+  // left, right, wherever the finger goes, purely cosmetic until a send
+  // commits. sendY is separate: it only moves once the drag crosses
+  // SEND_THRESHOLD, and it's what actually carries the photo/circle/
+  // noodle off the top of the screen, independent of wherever the
+  // noodle happened to be dragged to at that moment.
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
+  const sendY = useSharedValue(0);
   const committed = useSharedValue(0);
   const keyboardShift = useSharedValue(0);
   const circleEntry = useSharedValue(0);
@@ -74,6 +83,7 @@ export default function SnapSendPage({
   useEffect(() => {
     dragX.value = 0;
     dragY.value = 0;
+    sendY.value = 0;
     committed.value = 0;
   }, [photoUri]);
 
@@ -117,13 +127,17 @@ export default function SnapSendPage({
   const sendPan = Gesture.Pan()
     .onUpdate((e) => {
       if (committed.value === 1) return;
+      // Free in every direction — down and sideways just carry the
+      // noodle itself (it can drop anywhere in the space below it, even
+      // over the hint text), only clearing the upward SEND_THRESHOLD
+      // commits a send.
       dragX.value = e.translationX;
-      const nextY = Math.min(0, e.translationY);
-      dragY.value = nextY;
-      if (nextY < -SEND_THRESHOLD) {
+      dragY.value = e.translationY;
+      if (e.translationY < -SEND_THRESHOLD) {
         committed.value = 1;
         dragX.value = withTiming(0, { duration: 380 });
-        dragY.value = withTiming(-SCREEN_HEIGHT, { duration: 380 }, (finished) => {
+        dragY.value = withTiming(0, { duration: 380 });
+        sendY.value = withTiming(-SCREEN_HEIGHT, { duration: 380 }, (finished) => {
           if (finished) runOnJS(onPost)();
         });
       }
@@ -138,24 +152,24 @@ export default function SnapSendPage({
 
   const circleStyle = useAnimatedStyle(() => ({
     opacity: circleEntry.value,
-    transform: [{ translateY: dragY.value * 0.7 + (1 - circleEntry.value) * -50 }],
+    transform: [{ translateY: sendY.value * 0.7 + (1 - circleEntry.value) * -50 }],
   }));
 
   const polaroidStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: dragY.value }],
-    opacity: interpolate(dragY.value, [-SCREEN_HEIGHT * 0.9, 0], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: sendY.value }],
+    opacity: interpolate(sendY.value, [-SCREEN_HEIGHT * 0.9, 0], [0, 1], Extrapolation.CLAMP),
   }));
 
   const captionStyle = useAnimatedStyle(() => ({
     opacity: bottomEntry.value,
-    transform: [{ translateY: dragY.value + (1 - bottomEntry.value) * 50 }],
+    transform: [{ translateY: sendY.value + (1 - bottomEntry.value) * 50 }],
   }));
 
   const noodleStyle = useAnimatedStyle(() => ({
     opacity: bottomEntry.value,
     transform: [
       { translateX: dragX.value },
-      { translateY: dragY.value + (1 - bottomEntry.value) * 50 },
+      { translateY: dragY.value + sendY.value + (1 - bottomEntry.value) * 50 },
     ],
   }));
 
@@ -182,12 +196,16 @@ export default function SnapSendPage({
           </Pressable>
 
           <GestureDetector gesture={sendPan}>
-            <Animated.View style={[styles.noodleWrap, noodleStyle]}>
+            <Animated.View layout={LinearTransition.duration(220)} style={[styles.noodleWrap, noodleStyle]}>
               <NoodleIcon size={68} />
             </Animated.View>
           </GestureDetector>
 
-          <Animated.View style={[styles.hintWrap, captionStyle]}>
+          <Animated.View
+            layout={LinearTransition.duration(220)}
+            style={[styles.hintWrap, captionStyle]}
+            pointerEvents="none"
+          >
             <Text style={styles.hintStrong}>drag the noodle up to send</Text>
             <Text style={styles.hintMuted}>swipe down to cancel</Text>
           </Animated.View>
@@ -203,7 +221,10 @@ const styles = StyleSheet.create({
   dismissArea: {},
   photoWrap: { marginTop: spacing.md },
   captionWrap: { marginTop: spacing.lg },
-  noodleWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  // zIndex keeps the noodle painting above the hint text (and above
+  // its own resting slot) once it's dragged down past it — see
+  // pointerEvents="none" on hintWrap, which stops it stealing the drag.
+  noodleWrap: { flex: 1, alignItems: "center", justifyContent: "center", zIndex: 10 },
   hintWrap: { alignItems: "center", paddingBottom: spacing.xxl },
   hintStrong: { ...type.eyebrow, color: colors.ink, marginBottom: spacing.xs },
   hintMuted: { ...type.caption, color: colors.muted },

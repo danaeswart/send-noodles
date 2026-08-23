@@ -24,7 +24,6 @@ import type {
   CircleDoc,
   PromptDoc,
   PromptLockDoc,
-  PromptType,
   ScoringEventDoc,
   UserProfile,
   WithId,
@@ -150,10 +149,13 @@ function pickBalancedTeam(teams: Record<string, string[]>): string {
 }
 
 // Any circle member can propose a challenge. The prompt itself is picked
-// by the system at random — coin-flipped between a "daily" (no timer)
-// and "time_sensitive" (timed) prompt, falling back to whichever type
-// still has unused prompts if the first pick is exhausted — while the
-// proposer sets the terms (duration + prize). The proposer is
+// by the system at random from the "daily" prompt bank only — a circle
+// challenge always runs on the proposer's own duration/prize terms, so
+// it only ever draws from prompts with no built-in timer of their own.
+// "time_sensitive" prompts carry a fixed timeLimitSeconds meant for a
+// separate, quick timed action elsewhere in the app, not for a
+// multi-day circle challenge, so they're never candidates here. The
+// proposer sets the terms (duration + prize), and is
 // auto-agreed and immediately placed on a random team, same as anyone
 // else who accepts via setMemberAgreement; everyone else starts
 // "pending" with no team yet. Only allowed when there's no active
@@ -189,12 +191,8 @@ export async function proposeChallenge(
   const lockedPromptIds = await fetchLockedPromptIds();
   const excludedPromptIds = [...circle.usedPrompts, ...lockedPromptIds];
 
-  const firstType: PromptType = Math.random() < 0.5 ? "daily" : "time_sensitive";
-  const secondType: PromptType = firstType === "daily" ? "time_sensitive" : "daily";
-  const prompt =
-    (await fetchRandomUnusedPrompt(firstType, excludedPromptIds)) ??
-    (await fetchRandomUnusedPrompt(secondType, excludedPromptIds));
-  if (!prompt) throw new Error("No prompts left for this circle.");
+  const prompt = await fetchRandomUnusedPrompt("daily", excludedPromptIds);
+  if (!prompt) throw new Error("No daily prompts left for this circle.");
 
   const newChallengeRef = doc(challengesCol(circleId));
   const promptLockRef = doc(firestore, "promptLocks", prompt.id);
@@ -372,22 +370,25 @@ export async function startTimeSensitiveChallenge(circleId: string, challengeId:
 // from the same listener that drives the Lobby/scoreboard — whichever
 // member's client happens to be looking flips the status once the
 // condition is actually met.
-export async function checkAndCompleteChallengeIfDone(
-  circleId: string,
-  challengeId: string,
-  challenge: ChallengeDoc,
-  submittedCount: number
-) {
+//
+// Completion is purely time-based: a time_sensitive challenge ends when
+// its (short, prompt-driven) endsAt passes, and a daily challenge ends
+// when its startedAt + durationHours window closes. This deliberately
+// does NOT complete a challenge just because every member has submitted
+// at least once — submitSnap has no per-user cap, so members keep
+// sending snaps (and scoring points for their team) throughout the
+// whole window, not just a single round each.
+export async function checkAndCompleteChallengeIfDone(circleId: string, challengeId: string, challenge: ChallengeDoc) {
   if (challenge.status !== "active") return;
 
-  const totalMembers = Object.values(challenge.teams).reduce((sum, team) => sum + team.length, 0);
   const timeExpired =
-    challenge.promptType === "time_sensitive" &&
-    !!challenge.timeline.endsAt &&
-    challenge.timeline.endsAt.toMillis() <= Date.now();
-  const everyoneSubmitted = totalMembers > 0 && submittedCount >= totalMembers;
+    challenge.promptType === "time_sensitive"
+      ? !!challenge.timeline.endsAt && challenge.timeline.endsAt.toMillis() <= Date.now()
+      : !!challenge.timeline.startedAt &&
+        !!challenge.timeline.durationHours &&
+        challenge.timeline.startedAt.toMillis() + challenge.timeline.durationHours * 60 * 60 * 1000 <= Date.now();
 
-  if (timeExpired || everyoneSubmitted) {
+  if (timeExpired) {
     // Completing the challenge and releasing its prompt lock happen in
     // the same transaction — otherwise a client that crashed between two
     // separate writes could leave the lock stranded, permanently barring

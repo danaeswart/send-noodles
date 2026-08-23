@@ -24,6 +24,23 @@ service cloud.firestore {
         request.resource.data.members == resource.data.members.concat([request.auth.uid]);
     }
 
+    // Guards a snap that's claiming to score a challenge point: the
+    // challenge it names must genuinely be active (and, for time-sensitive
+    // prompts, not past its own endsAt — same check the plain
+    // challengeId != null branch already did), and — the part that used
+    // to be trusted purely client-side — the teamId on the snap must be a
+    // real team on that challenge that the sender is actually a member
+    // of. Without this, a hand-crafted write could credit points to any
+    // team, including one the sender isn't even on.
+    function isValidChallengeSnap(circleId, challengeId, teamId) {
+      let challenge = get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(challengeId)).data;
+      return challenge.status == "active" &&
+        (challenge.timeline.endsAt == null || request.time <= challenge.timeline.endsAt) &&
+        teamId != null &&
+        teamId in challenge.teams &&
+        request.auth.uid in challenge.teams[teamId];
+    }
+
     // /users/{userId} — every user can read any profile (display names
     // are shown across circles). Creating/renaming/etc. a profile is
     // always restricted to its own owner. Updates get one narrow
@@ -131,23 +148,22 @@ service cloud.firestore {
       // photo at any time, not just while a challenge is active. When
       // challengeId is set, this re-verifies server-side that the
       // referenced challenge is genuinely active (and, for
-      // time-sensitive prompts, not past its own endsAt) before letting
-      // the write claim it — a stale or spoofed challengeId is
-      // rejected outright rather than silently scored. challengeId ==
-      // null is always allowed: an unscored snap just for the circle.
+      // time-sensitive prompts, not past its own endsAt) and that the
+      // claimed teamId is a real team on that challenge the sender is
+      // actually on — a stale/spoofed challengeId, or a teamId the
+      // sender isn't a member of, is rejected outright rather than
+      // silently scored. challengeId == null (and teamId == null with
+      // it) is always allowed: an unscored snap just for the circle.
       match /snaps/{snapId} {
         allow read: if isCircleMember(circleId);
 
         allow create: if isCircleMember(circleId)
           && request.auth.uid == request.resource.data.userId
           && (
-            request.resource.data.challengeId == null ||
+            (request.resource.data.challengeId == null && request.resource.data.teamId == null) ||
             (
-              get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(request.resource.data.challengeId)).data.status == "active" &&
-              (
-                get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(request.resource.data.challengeId)).data.timeline.endsAt == null ||
-                request.time <= get(/databases/$(database)/documents/circles/$(circleId)/challenges/$(request.resource.data.challengeId)).data.timeline.endsAt
-              )
+              request.resource.data.challengeId != null &&
+              isValidChallengeSnap(circleId, request.resource.data.challengeId, request.resource.data.teamId)
             )
           );
 

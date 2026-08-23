@@ -1,4 +1,4 @@
-﻿import { Dimensions, StyleSheet, Text, View } from "react-native";
+import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   Extrapolation,
@@ -12,19 +12,23 @@ import type { SharedValue } from "react-native-reanimated";
 import { useEffect } from "react";
 
 import { colors, spacing, type } from "../../constants/theme";
-import type { Challenge } from "../../data/mockChallenges";
+import type { HomeChallengeCard } from "../../types/homeChallenge";
+import { useUserProfiles } from "../../hooks/useUserProfiles";
+import { nextMidnightISOString } from "../../utils/dailyCountdown";
 import AvatarCluster from "./AvatarCluster";
 import CountdownTimer from "./CountdownTimer";
 import IllustrationSlot from "./IllustrationSlot";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const LONG_PRESS_MS = 500;
 
 type Props = {
-  challenge: Challenge;
+  card: HomeChallengeCard;
   index: number;
   isActive: boolean;
   isLast: boolean;
   scrollY: SharedValue<number>;
+  onLongPressCapture: (circleId: string) => void;
 };
 
 // One full-screen slide in the vertical challenge feed.
@@ -36,9 +40,11 @@ type Props = {
 // 2. `progress` — a per-element staggered fade-up that plays whenever
 //    this card becomes the active one, not just on first mount, so
 //    swiping back to a previous challenge still feels alive.
-export default function ChallengeCard({ challenge, index, isActive, isLast, scrollY }: Props) {
+export default function ChallengeCard({ card, index, isActive, isLast, scrollY, onLongPressCapture }: Props) {
   const insets = useSafeAreaInsets();
   const progress = useSharedValue(0);
+  const profiles = useUserProfiles(card.memberIds);
+  const hasChallenge = card.challenge !== null;
 
   useEffect(() => {
     if (isActive) {
@@ -85,45 +91,59 @@ export default function ChallengeCard({ challenge, index, isActive, isLast, scro
 
   return (
     <Animated.View style={[styles.card, { paddingTop: insets.top + spacing.lg }, cardStyle]}>
-      <Animated.View style={[styles.illustrationContainer, illustrationAnim]}>
-  <IllustrationSlot source={challenge.illustrationSource} />
-</Animated.View>
+      <Pressable
+        style={styles.pressableFill}
+        onLongPress={() => onLongPressCapture(card.circleId)}
+        delayLongPress={LONG_PRESS_MS}
+      >
+        <Animated.View
+          style={[styles.illustrationContainer, illustrationAnim, !hasChallenge && styles.illustrationContainerBig]}
+        >
+          <IllustrationSlot source={card.illustrationSource} big={!hasChallenge} />
+        </Animated.View>
 
-      <Animated.View style={[styles.section, eyebrowAnim]}>
-        <Text style={styles.eyebrow}>Today's Challenge</Text>
-      </Animated.View>
+        {hasChallenge ? (
+          <>
+            <Animated.View style={[styles.section, eyebrowAnim]}>
+              <Text style={styles.eyebrow}>Today's Challenge</Text>
+            </Animated.View>
 
-      <Animated.View style={headlineAnim}>
-        <Text style={styles.headline}>{challenge.prompt}</Text>
-      </Animated.View>
+            <Animated.View style={headlineAnim}>
+              <Text style={styles.headline}>{card.challenge!.promptText}</Text>
+            </Animated.View>
 
-      <Animated.View style={[styles.timerRow, timerAnim]}>
-        <Text style={styles.endsInLabel}>Ends in</Text>
-        <CountdownTimer endsAt={challenge.endsAt} />
-      </Animated.View>
+            <Animated.View style={[styles.timerRow, timerAnim]}>
+              <Text style={styles.endsInLabel}>Ends in</Text>
+              <CountdownTimer endsAt={nextMidnightISOString()} />
+            </Animated.View>
+          </>
+        ) : (
+          <Animated.View style={[styles.section, eyebrowAnim]}>
+            <Text style={styles.eyebrow}>Today's Challenge</Text>
+            <Text style={styles.noChallengeText}>No active challenges</Text>
+          </Animated.View>
+        )}
 
-      <Animated.View style={[styles.circleRow, circleAnim]}>
-        <View>
-          <Text style={styles.eyebrow}>Circle</Text>
-          <Text style={styles.circleName}>{challenge.circleName}</Text>
+        <Animated.View style={[styles.circleRow, circleAnim]}>
+          <View>
+            <Text style={styles.eyebrow}>Circle</Text>
+            <Text style={styles.circleName}>{card.circleName}</Text>
+          </View>
+          <AvatarCluster memberIds={card.memberIds} profiles={profiles} />
+        </Animated.View>
+
+        <View style={styles.divider} />
+
+        <Animated.View style={captureAnim}>
+          <Text style={styles.captureLabel}>Press and hold to capture</Text>
+        </Animated.View>
+
+        <View style={styles.hintWrap}>
+          <Text style={styles.hint}>
+            {isLast ? "that's all your challenges for today" : "swipe up to view other circle challenges"}
+          </Text>
         </View>
-        <AvatarCluster
-          participants={challenge.participants}
-          overflowCount={challenge.participantOverflowCount}
-        />
-      </Animated.View>
-
-      <View style={styles.divider} />
-
-      <Animated.View style={captureAnim}>
-        <Text style={styles.captureLabel}>Press and hold to capture</Text>
-      </Animated.View>
-
-      <View style={styles.hintWrap}>
-        <Text style={styles.hint}>
-          {isLast ? "that's all your challenges for today" : "swipe up to view other circle challenges"}
-        </Text>
-      </View>
+      </Pressable>
     </Animated.View>
   );
 }
@@ -134,6 +154,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.paper,
     paddingHorizontal: spacing.lg,
   },
+  pressableFill: { flex: 1 },
   section: { marginTop: spacing.xl },
   eyebrow: { ...type.eyebrow, color: colors.muted },
   headline: {
@@ -141,6 +162,12 @@ const styles = StyleSheet.create({
     fontSize: 34,
     lineHeight: 38,
     color: colors.ink,
+    marginTop: spacing.sm,
+  },
+  noChallengeText: {
+    ...type.serifDisplay,
+    fontSize: 22,
+    color: colors.muted,
     marginTop: spacing.sm,
   },
   timerRow: { flexDirection: "row", alignItems: "baseline", marginTop: spacing.lg, gap: spacing.sm },
@@ -174,6 +201,9 @@ illustrationContainer: {
   justifyContent: "center",
   alignItems: "flex-end",
   overflow: "hidden",
+},
+illustrationContainerBig: {
+  height: SCREEN_HEIGHT * 0.42,
 },
   hintWrap: { flex: 1, justifyContent: "flex-end", alignItems: "center", paddingBottom: spacing.xxl },
   hint: { ...type.caption, color: colors.muted },

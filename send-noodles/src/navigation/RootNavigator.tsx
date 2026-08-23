@@ -9,6 +9,8 @@ import MembersScreen from "../screens/MembersScreen";
 import MemoriesScreen from "../screens/MemoriesScreen";
 import MemoryDetailScreen from "../screens/MemoryDetailScreen";
 import ChooseFrameScreen from "../screens/ChooseFrameScreen";
+import CircleSnapsScreen from "../screens/CircleSnapsScreen";
+import CircleSnapDetailScreen from "../screens/CircleSnapDetailScreen";
 import LoginScreen from "../screens/auth/LoginScreen";
 import SignUpScreen from "../screens/auth/SignUpScreen";
 import { RootStackParamList } from "./types";
@@ -55,6 +57,8 @@ export default function RootNavigator() {
             <Stack.Screen name="Memories" component={MemoriesScreen} />
             <Stack.Screen name="MemoryDetail" component={MemoryDetailScreen} />
             <Stack.Screen name="ChooseFrame" component={ChooseFrameScreen} />
+            <Stack.Screen name="CircleSnaps" component={CircleSnapsScreen} />
+            <Stack.Screen name="CircleSnapDetail" component={CircleSnapDetailScreen} />
           </>
         ) : (
           <>

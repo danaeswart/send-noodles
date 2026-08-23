@@ -31,6 +31,7 @@ type SubmitSnapArgs = {
   circleId: string;
   userId: string;
   photoUri: string;
+  caption?: string;
   // The circle's active challenge and the sender's team on it, if any —
   // both are optional because a circle member can send a snap at any
   // time. The challenge is just a fun extra: with no active challenge
@@ -52,7 +53,14 @@ const POINTS_PER_SNAP = 1;
 // circle's feed without also existing in the sender's personal archive.
 // The Cloudinary upload happens first, outside the batch, so a failed
 // upload never produces a dangling/incomplete pair of docs.
-export async function submitSnap({ circleId, userId, photoUri, challengeId = null, teamId = null }: SubmitSnapArgs) {
+export async function submitSnap({
+  circleId,
+  userId,
+  photoUri,
+  caption = "",
+  challengeId = null,
+  teamId = null,
+}: SubmitSnapArgs) {
   const snapRef = doc(snapsCol(circleId));
 
   const imageUrl = await uploadImageToCloudinary({
@@ -68,12 +76,14 @@ export async function submitSnap({ circleId, userId, photoUri, challengeId = nul
     teamId: countsTowardChallenge ? teamId : null,
     challengeId: countsTowardChallenge ? challengeId : null,
     imageUrl,
+    caption,
     submittedAt: serverTimestamp(),
   };
 
   const personalSnap: Omit<PersonalSnapDoc, "submittedAt"> & { submittedAt: ReturnType<typeof serverTimestamp> } = {
     circleId,
     imageUrl,
+    caption,
     frameId: null,
     positionIndex: null,
     submittedAt: serverTimestamp(),
@@ -112,6 +122,20 @@ export function subscribeToTodaysSnaps(circleId: string, callback: (snaps: WithI
     // Leaving this circle (including via account deletion) denies this
     // listener on its next update — expected, so it just goes quiet
     // instead of logging as an uncaught Firestore SDK error.
+    () => callback([])
+  );
+}
+
+// Every snap ever sent to a circle, newest first — backs the "view all
+// snaps" gallery reached from the circle's snaps preview (unlike
+// subscribeToTodaysSnaps above, which is scoped to just today).
+export function subscribeToCircleSnaps(circleId: string, callback: (snaps: WithId<SnapDoc>[]) => void): Unsubscribe {
+  const q = query(snapsCol(circleId), orderBy("submittedAt", "desc"));
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as SnapDoc) })));
+    },
     () => callback([])
   );
 }

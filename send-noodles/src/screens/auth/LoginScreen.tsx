@@ -25,7 +25,9 @@ export default function LoginScreen({ navigation }: Props) {
     setIsSubmitting(true);
     try {
       await logInWithEmail(email.trim(), password);
-      navigation.replace("Main");
+      // No manual navigation here — RootNavigator swaps to the signed-in
+      // screen group on its own once useAuthUser picks up the new
+      // session (see RootNavigator.tsx).
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't log you in. Check your details.");
     } finally {

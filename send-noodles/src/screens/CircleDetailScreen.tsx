@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Dimensions, Image, ScrollView, Share, StyleSheet, Text, View, Pressable } from "react-native";
+import { Timestamp } from "firebase/firestore";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import MemberFaceRow from "../components/circles/MemberFaceRow";
@@ -10,6 +11,7 @@ import { useAuthUser } from "../hooks/useAuthUser";
 import { useActiveChallenge } from "../hooks/useActiveChallenge";
 import { useChallengeAgreement } from "../hooks/useChallengeAgreement";
 import { useScoreboard } from "../hooks/useScoreboard";
+import { useTicker } from "../hooks/useTicker";
 import { useTodaysSnaps } from "../hooks/useTodaysSnaps";
 import { useUserProfiles } from "../hooks/useUserProfiles";
 import { awardChallengeRewards, checkAndCompleteChallengeIfDone } from "../../firebase/challenges";
@@ -27,7 +29,7 @@ export default function CircleDetailScreen() {
   const { user } = useAuthUser();
   const userId = user?.uid ?? null;
 
-  const { circle, canProposeChallenge, startTimer, actionError } = useActiveChallenge(circleId, userId);
+  const { circle, startTimer, actionError } = useActiveChallenge(circleId, userId);
   const challengeId = circle?.activeChallengeId ?? null;
   const {
     challenge,
@@ -36,23 +38,31 @@ export default function CircleDetailScreen() {
     decline,
     actionError: agreementError,
   } = useChallengeAgreement(circleId, challengeId, userId);
-  const { events, totals, submittedUserIds } = useScoreboard(circleId, challengeId);
+  const { events, totals } = useScoreboard(circleId, challengeId);
   const snaps = useTodaysSnaps(circleId);
   const memberProfiles = useUserProfiles(circle?.members ?? []);
   const [leaveError, setLeaveError] = useState<string | null>(null);
+  // Ticks every minute so the "time left" stat below actually counts
+  // down live instead of freezing at whatever it read on mount — called
+  // unconditionally here (not after the early return below) since hooks
+  // can't be conditional.
+  const now = useTicker(60000);
 
   // Opportunistic "completed" transition — there's no Cloud Function to
   // do this the instant it becomes true on the Spark plan, so whichever
-  // member's client is looking (via this same scoreboard listener)
-  // flips it once the condition is actually met.
+  // member's client is looking flips it once the deadline has actually
+  // passed. Re-runs on every new scoring event (not just when the
+  // challenge doc itself changes) so a snap landing right after the
+  // deadline is still a chance to catch it, not just the client that
+  // happened to have the screen open at the exact moment it expired.
   useEffect(() => {
     if (!circleId || !challengeId || !challenge) return;
     if (challenge.status === "active") {
-      void checkAndCompleteChallengeIfDone(circleId, challengeId, challenge, submittedUserIds.size);
+      void checkAndCompleteChallengeIfDone(circleId, challengeId, challenge);
     } else if (challenge.status === "completed" && !challenge.rewardsGranted) {
       void awardChallengeRewards(circleId, challengeId);
     }
-  }, [circleId, challengeId, challenge, submittedUserIds]);
+  }, [circleId, challengeId, challenge, events]);
 
   if (!circleId || !circle) {
     return (
@@ -81,7 +91,48 @@ export default function CircleDetailScreen() {
   const teamALeading = teamAScore > teamBScore;
   const teamBLeading = teamBScore > teamAScore;
 
+  // The challenge's actual end, however it got there: a time-sensitive
+  // prompt already carries an absolute endsAt (set by
+  // startTimeSensitiveChallenge from the prompt's own timeLimitSeconds),
+  // while a daily prompt only ever gets startedAt — its end is
+  // startedAt + the duration the proposer picked (in days, stored as
+  // hours; see ChallengeSetupScreen), computed here the same way
+  // checkAndCompleteChallengeIfDone does server-side. Null while the
+  // challenge hasn't started yet (setup/locked), since there's nothing
+  // to count down from.
+  const effectiveEndsAt =
+    challenge?.timeline.endsAt ??
+    (challenge?.timeline.startedAt && challenge?.timeline.durationHours
+      ? Timestamp.fromMillis(
+          challenge.timeline.startedAt.toMillis() + challenge.timeline.durationHours * 60 * 60 * 1000
+        )
+      : null);
+
+  // Recomputed every tick of `now` (see useTicker above), rounded to the
+  // nearest hour per the brief — floored at 1h rather than showing "0h
+  // left" for the last stretch before it actually crosses over to
+  // "time's up".
+  const durationLabel = (() => {
+    if (!challenge) return "not set";
+    if (challenge.status === "completed") return "ended";
+    if (!effectiveEndsAt) {
+      return challenge.timeline.durationHours ? `${challenge.timeline.durationHours}h` : "not set";
+    }
+    const remainingMs = effectiveEndsAt.toMillis() - now;
+    if (remainingMs <= 0) return "time's up";
+    const remainingHours = Math.max(1, Math.round(remainingMs / (60 * 60 * 1000)));
+    return `${remainingHours}h left`;
+  })();
+
   const canStartTimer = challenge?.status === "locked" && challenge.promptType === "time_sensitive";
+  // Derived from `challenge` (kept in sync with circle.activeChallengeId
+  // via challengeId above) rather than useActiveChallenge's own
+  // internal subscription — that one can briefly still be pointing at
+  // the previous, already-completed challenge for a beat while its own
+  // listener catches up to a freshly created one, which would flash
+  // the "create challenge" button back on even though a new challenge
+  // already exists.
+  const hasActiveChallenge = !!challenge && challenge.status !== "completed";
   // While the *group* is still deciding (nobody's played yet), hide the
   // prompt/battle/teams and simplify the page to just the essentials —
   // snaps still always show regardless, since sending to the circle
@@ -95,10 +146,10 @@ export default function CircleDetailScreen() {
   // joinCircleByCode): they still get to opt in, just onto a challenge
   // that's already running for everyone else.
   const canRespondToInvite = !!challenge && challenge.status !== "completed" && (isPendingInvite || myAgreement === "pending");
-  const ctaLabel = canProposeChallenge ? "+ create challenge" : "▶ start challenge";
+  const ctaLabel = hasActiveChallenge ? "▶ start challenge" : "+ create challenge";
 
   const handleCtaPress = () => {
-    if (canProposeChallenge) navigation.navigate("ChallengeSetup", { circleId });
+    if (!hasActiveChallenge) navigation.navigate("ChallengeSetup", { circleId });
     else if (canStartTimer) void startTimer();
   };
 
@@ -176,10 +227,8 @@ export default function CircleDetailScreen() {
 
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
-            <Text style={styles.statLabel}>duration</Text>
-            <Text style={styles.statValue}>
-              {challenge?.timeline.durationHours ? `${challenge.timeline.durationHours}h` : "not set"}
-            </Text>
+            <Text style={styles.statLabel}>{effectiveEndsAt ? "time left" : "duration"}</Text>
+            <Text style={styles.statValue}>{durationLabel}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>the prize</Text>
@@ -188,14 +237,35 @@ export default function CircleDetailScreen() {
         </View>
 
         {canRespondToInvite && (
-          <View style={styles.inviteButtonRow}>
-            <Pressable style={styles.inviteButton} onPress={() => void agree()}>
-              <Text style={styles.inviteButtonText}>join challenge</Text>
-            </Pressable>
-            <Pressable style={styles.inviteButton} onPress={() => void decline()}>
-              <Text style={styles.inviteButtonText}>decline</Text>
-            </Pressable>
-          </View>
+          <>
+            <View style={styles.inviteButtonRow}>
+              <Pressable
+                style={[styles.inviteButton, myAgreement === "agreed" && styles.inviteButtonSelected]}
+                onPress={() => void agree()}
+              >
+                <Text style={[styles.inviteButtonText, myAgreement === "agreed" && styles.inviteButtonTextSelected]}>
+                  {myAgreement === "agreed" ? "✓ joined" : "join challenge"}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.inviteButton, myAgreement === "declined" && styles.inviteButtonSelected]}
+                onPress={() => void decline()}
+              >
+                <Text
+                  style={[styles.inviteButtonText, myAgreement === "declined" && styles.inviteButtonTextSelected]}
+                >
+                  {myAgreement === "declined" ? "✓ declined" : "decline"}
+                </Text>
+              </Pressable>
+            </View>
+            {myAgreement !== "pending" && (
+              <Text style={styles.inviteStatusText}>
+                {myAgreement === "agreed"
+                  ? "you're in and on a team — waiting on everyone else to respond. tap decline to change your mind."
+                  : "you're sitting this one out — your snaps still send to the circle, they just won't score. tap join challenge to change your mind."}
+              </Text>
+            )}
+          </>
         )}
         {canRespondToInvite && agreementError && <Text style={styles.errorText}>{agreementError}</Text>}
 
@@ -232,19 +302,27 @@ export default function CircleDetailScreen() {
         <View style={styles.divider} />
 
         <Text style={styles.sectionLabel}>today's snaps preview</Text>
-        <View style={styles.snapGrid}>
-          {[...Array(6)].map((_, index) => {
-            const snap = snaps[index];
-            return (
-              <View key={snap?.id ?? index} style={styles.snapItem}>
-                {snap && <Image source={{ uri: snap.imageUrl }} style={styles.snapItem} resizeMode="cover" />}
-              </View>
-            );
-          })}
-        </View>
-        <Text style={styles.viewAllSnaps}>view all snaps →</Text>
+        <Pressable onPress={() => navigation.navigate("CircleSnaps", { circleId, circleName: circle.name })}>
+          <View style={styles.snapGrid}>
+            {[...Array(6)].map((_, index) => {
+              const snap = snaps[index];
+              return (
+                <View key={snap?.id ?? index} style={styles.snapItem}>
+                  {snap && <Image source={{ uri: snap.imageUrl }} style={styles.snapItem} resizeMode="cover" />}
+                </View>
+              );
+            })}
+          </View>
+          <Text style={styles.viewAllSnaps}>view all snaps →</Text>
+        </Pressable>
 
-        {(canProposeChallenge || canStartTimer) && (
+        {/* Never shown alongside the invite buttons above: a member who
+            still needs to join/decline this challenge (e.g. they joined
+            the circle after a time-sensitive challenge already locked)
+            would otherwise see "start challenge" sitting right next to
+            "join challenge" — redundant, and not their call to make
+            until they've actually answered the invite themselves. */}
+        {(!hasActiveChallenge || canStartTimer) && !canRespondToInvite && (
           <>
             <View style={styles.divider} />
 
@@ -299,6 +377,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   inviteButtonText: { ...type.eyebrow, color: colors.ink, letterSpacing: 1 },
+  inviteButtonSelected: { backgroundColor: colors.ink },
+  inviteButtonTextSelected: { color: colors.paper },
+  inviteStatusText: { ...type.caption, color: colors.muted, marginTop: spacing.sm, lineHeight: 18 },
   battleHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.sm },
   leadingLabel: { ...type.caption, color: colors.accent, letterSpacing: 2 },
   battleRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.lg, marginBottom: spacing.lg },

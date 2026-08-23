@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { StyleSheet, Text } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
@@ -28,9 +29,10 @@ type Props = {
   editing: boolean;
   onEnterEdit: () => void;
   onCommit: (id: string, patch: WallPhotoPatch) => void;
+  onDelete: (id: string) => void;
 };
 
-export default function WallFrame({ photo, screenWidth, editing, onEnterEdit, onCommit }: Props) {
+export default function WallFrame({ photo, screenWidth, editing, onEnterEdit, onCommit, onDelete }: Props) {
   // Captured once at mount and never updated from props again. The
   // committed position/size after a drag or pinch is reported back to
   // the parent purely for bookkeeping — this frame keeps rendering off
@@ -111,6 +113,14 @@ export default function WallFrame({ photo, screenWidth, editing, onEnterEdit, on
 
   const gesture = Gesture.Simultaneous(pan, pinch);
 
+  // A nested GestureDetector for just the delete badge's small hit area —
+  // being deeper in the view tree, it gets first refusal on a touch that
+  // starts there, so tapping it doesn't also get read as the start of a
+  // drag by the frame's own pan gesture.
+  const deleteTap = Gesture.Tap().onEnd(() => {
+    runOnJS(onDelete)(base.id);
+  });
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
@@ -129,7 +139,37 @@ export default function WallFrame({ photo, screenWidth, editing, onEnterEdit, on
         ]}
       >
         <FramedPhoto frame={base.frame} photo={{ uri: base.imageUrl }} size={base.size} />
+
+        {editing && (
+          <GestureDetector gesture={deleteTap}>
+            <Animated.View style={styles.deleteBadge}>
+              <Text style={styles.deleteBadgeText}>✕</Text>
+            </Animated.View>
+          </GestureDetector>
+        )}
       </Animated.View>
     </GestureDetector>
   );
 }
+
+const styles = StyleSheet.create({
+  deleteBadge: {
+    position: "absolute",
+    top: -10,
+    right: -10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#141414",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#F5F0E8",
+  },
+  deleteBadgeText: {
+    color: "#F5F0E8",
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 14,
+  },
+});

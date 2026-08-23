@@ -20,7 +20,7 @@ export default function ChallengeSetupScreen() {
   const { user } = useAuthUser();
   const userId = user?.uid ?? null;
 
-  const [durationHours, setDurationHours] = useState("24");
+  const [durationDays, setDurationDays] = useState("1");
   const [wager, setWager] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,9 +28,9 @@ export default function ChallengeSetupScreen() {
   const handleSubmit = async () => {
     if (isSubmitting || !userId) return;
 
-    const parsedDuration = Number(durationHours);
-    if (!Number.isFinite(parsedDuration) || parsedDuration <= 0) {
-      setError("Enter how many hours the circle has.");
+    const parsedDays = Number(durationDays);
+    if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
+      setError("Enter how many days the circle has.");
       return;
     }
     if (!wager.trim()) {
@@ -41,7 +41,12 @@ export default function ChallengeSetupScreen() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await proposeChallenge(circleId, userId, wager, parsedDuration);
+      // proposeChallenge/ChallengeDoc still track duration in hours —
+      // this screen is just the one place that collects it from the
+      // user in days, converting on the way in so CircleDetailScreen's
+      // countdown (which reads timeline.durationHours) never has to
+      // care which unit the proposer originally typed.
+      await proposeChallenge(circleId, userId, wager, parsedDays * 24);
       navigation.goBack();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't create that challenge.");
@@ -70,10 +75,10 @@ export default function ChallengeSetupScreen() {
         </Text>
 
         <AuthTextField
-          label="duration (hours)"
-          value={durationHours}
-          onChangeText={setDurationHours}
-          placeholder="24"
+          label="duration (days)"
+          value={durationDays}
+          onChangeText={setDurationDays}
+          placeholder="1"
           keyboardType="number-pad"
         />
         <AuthTextField label="the prize" value={wager} onChangeText={setWager} placeholder="loser buys a round of drinks" />

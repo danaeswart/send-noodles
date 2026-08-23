@@ -8,8 +8,12 @@ import type { ChallengeDoc, CircleDoc, WithId } from "../../firebase/types";
 // calls for on the Spark (no Cloud Functions) plan: starting a
 // time-sensitive challenge's countdown once its wager is locked.
 // Proposing a new challenge itself happens on a separate screen
-// (ChallengeSetupScreen) since it needs user-entered terms — this hook
-// just tells the caller whether that's currently allowed.
+// (ChallengeSetupScreen) since it needs user-entered terms — callers
+// derive whether that's currently allowed from `challenge.status`
+// themselves (see CircleDetailScreen's hasActiveChallenge), rather than
+// from this hook, since a caller may already have a more up-to-date
+// challenge doc in hand than the one this hook's own subscription has
+// caught up to yet.
 export function useActiveChallenge(circleId: string | null, currentUserId: string | null) {
   const [circle, setCircle] = useState<WithId<CircleDoc> | null>(null);
   const [challenge, setChallenge] = useState<WithId<ChallengeDoc> | null>(null);
@@ -31,8 +35,6 @@ export function useActiveChallenge(circleId: string | null, currentUserId: strin
     return subscribeToChallenge(circleId, circle.activeChallengeId, setChallenge);
   }, [circleId, circle?.activeChallengeId]);
 
-  const canProposeChallenge = !!circleId && (!circle?.activeChallengeId || challenge?.status === "completed");
-
   const startTimer = useCallback(async () => {
     if (!circleId || !challenge) return;
     setActionError(null);
@@ -43,5 +45,5 @@ export function useActiveChallenge(circleId: string | null, currentUserId: strin
     }
   }, [circleId, challenge]);
 
-  return { circle, challenge, canProposeChallenge, startTimer, actionError };
+  return { circle, challenge, startTimer, actionError };
 }

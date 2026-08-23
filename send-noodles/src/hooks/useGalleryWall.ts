@@ -72,5 +72,13 @@ export function useGalleryWall(userId: string | null) {
     await updateSnapWallPlacement(ref, firestorePatch);
   }, []);
 
-  return { wallPhotos, updatePosition };
+  // Doesn't touch Memories — just un-curates the photo from the wall,
+  // same "onWall" flag the Memories -> choose a frame flow sets to true.
+  const removeFromWall = useCallback(async (id: string) => {
+    const ref = refsById.current.get(id);
+    if (!ref) return;
+    await updateSnapWallPlacement(ref, { onWall: false });
+  }, []);
+
+  return { wallPhotos, updatePosition, removeFromWall };
 }

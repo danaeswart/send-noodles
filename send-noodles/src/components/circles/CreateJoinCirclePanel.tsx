@@ -59,8 +59,7 @@ export default function CreateJoinCirclePanel({ userId, pageHeight, onCircleCrea
 
   const handleShare = () => {
     if (!createdCode) return;
-    void Share.share({ message: `0
-      .${createdCode.joinCode}` });
+    void Share.share({ message: createdCode.joinCode });
   };
 
   if (createdCode) {

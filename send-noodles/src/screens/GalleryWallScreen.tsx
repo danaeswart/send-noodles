@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
@@ -33,8 +34,9 @@ const canvasOffset = rotatedOffset(WALL_SCROLL_LENGTH, SCREEN_WIDTH);
 
 export default function GalleryWallScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const insets = useSafeAreaInsets();
   const { user } = useAuthUser();
-  const { wallPhotos, updatePosition } = useGalleryWall(user?.uid ?? null);
+  const { wallPhotos, updatePosition, removeFromWall } = useGalleryWall(user?.uid ?? null);
   const [isEditing, setIsEditing] = useState(false);
   const scrollY = useSharedValue(0);
 
@@ -48,6 +50,20 @@ export default function GalleryWallScreen() {
       void updatePosition(id, patch);
     },
     [updatePosition]
+  );
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      Alert.alert(
+        "Remove from wall?",
+        "This photo will stay in your Memories, just not on the wall.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Remove", style: "destructive", onPress: () => void removeFromWall(id) },
+        ]
+      );
+    },
+    [removeFromWall]
   );
 
   const scrollHandler = useAnimatedScrollHandler({
@@ -102,6 +118,7 @@ export default function GalleryWallScreen() {
               editing={isEditing}
               onEnterEdit={handleEnterEdit}
               onCommit={handleCommit}
+              onDelete={handleDelete}
             />
           ))}
         </View>
@@ -121,7 +138,7 @@ export default function GalleryWallScreen() {
             },
           ]}
         >
-          <Text style={styles.wallTitle}>the wall</Text>
+          <Text style={[styles.wallTitle, { left: insets.top + 20 }]}>the wall</Text>
 
           <View style={styles.bottomBar}>
             <Text style={styles.bottomBarText}>swipe to see more →</Text>
@@ -198,8 +215,11 @@ const styles = StyleSheet.create({
   },
 
   wallTitle: {
+    // `left` here is the rotated canvas's along-scroll axis, which is
+    // what actually lands near the screen's top edge once rotated —
+    // overridden inline with the safe-area inset so this clears the
+    // status bar/notch instead of sitting under it.
     position: "absolute",
-    left: 24,
     top: 22,
     fontSize: 26,
     fontStyle: "italic",

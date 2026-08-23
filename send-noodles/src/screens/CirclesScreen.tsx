@@ -146,6 +146,20 @@ export default function CirclesScreen() {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         onMomentumScrollEnd={onMomentumScrollEnd}
+        // The "create circle" panel's name/code TextInputs live inside
+        // this list. removeClippedSubviews (on by default on Android)
+        // can detach an offscreen-adjacent cell's native view for reuse
+        // while a TextInput inside it still has focus — the keyboard
+        // and cursor stay up, but keystrokes land on a native view
+        // that's no longer attached, so nothing appears. There are only
+        // ever a handful of pages here, so the memory this would save
+        // isn't worth that intermittent dropped-input bug.
+        removeClippedSubviews={false}
+        // Without this, tapping into a field while the keyboard is
+        // already up (e.g. switching between the name field and the
+        // "create circle" button) can eat the first tap as a
+        // dismiss-keyboard gesture instead of reaching the field.
+        keyboardShouldPersistTaps="handled"
       />
     </View>
   );

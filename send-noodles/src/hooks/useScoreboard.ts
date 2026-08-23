@@ -27,7 +27,5 @@ export function useScoreboard(circleId: string | null, challengeId: string | nul
     return byTeam;
   }, [events]);
 
-  const submittedUserIds = useMemo(() => new Set(events.map((event) => event.userId)), [events]);
-
-  return { events, totals, submittedUserIds };
+  return { events, totals };
 }

@@ -2,25 +2,24 @@
 import { colors, type } from "../../constants/theme";
 
 type Props = {
-  source?: number; // pass require("../../assets/illustrations/x.png")
+  source?: number; // pass require("../../assets/illustrations/x.png"), see src/constants/illustrations.ts
+  big?: boolean; // shown larger when a circle has no active challenge right now
 };
 
-// Until real illustration assets exist, shows a dashed placeholder so
-// nothing crashes on a missing require(). Once you've added files to
-// assets/illustrations, pass one in via the illustrationSource field on
-// a Challenge — this component just renders whichever it's handed.
-// Random selection from the folder can be added as a small util once
-// there's more than one asset to pick from.
-export default function IllustrationSlot({ source }: Props) {
+// Falls back to a dashed placeholder if no source is handed in (should
+// only happen if assets/illustrations ends up empty), otherwise just
+// renders whichever illustration src/hooks/useHomeChallenges.ts randomly
+// picked for this circle's card.
+export default function IllustrationSlot({ source, big }: Props) {
   if (!source) {
     return (
-      <View style={styles.placeholder}>
+      <View style={[styles.placeholder, big && styles.big]}>
         <Text style={styles.placeholderText}>illustration</Text>
       </View>
     );
   }
 
-  return <Image source={source} style={styles.image} resizeMode="contain" />;
+  return <Image source={source} style={[styles.image, big && styles.big]} resizeMode="contain" />;
 }
 
 const styles = StyleSheet.create({
@@ -34,4 +33,5 @@ const styles = StyleSheet.create({
   },
   placeholderText: { ...type.caption, color: colors.muted },
   image: { height: 220, width: "100%" },
+  big: { height: 300 },
 });

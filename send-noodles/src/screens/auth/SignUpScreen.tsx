@@ -28,7 +28,9 @@ export default function SignUpScreen({ navigation }: Props) {
     setIsSubmitting(true);
     try {
       await signUpWithEmail(email.trim(), password, firstName.trim(), surname.trim());
-      navigation.replace("Main");
+      // No manual navigation here — RootNavigator swaps to the signed-in
+      // screen group on its own once useAuthUser picks up the new
+      // session (see RootNavigator.tsx).
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't create your account. Try again.");
     } finally {
