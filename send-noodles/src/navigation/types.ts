@@ -4,6 +4,7 @@
   Main: undefined;
   SnapReview: { photoUri?: string } | undefined;
   CircleDetail: { circleId?: string } | undefined;
+  PersonalCircle: { circleId: string };
   ChallengeSetup: { circleId: string };
   Members: { circleId: string };
   Memories: undefined;

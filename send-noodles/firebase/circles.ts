@@ -1,7 +1,11 @@
-import { arrayRemove, arrayUnion, collection, doc, getDoc, runTransaction, updateDoc } from "firebase/firestore";
+import { arrayRemove, arrayUnion, collection, doc, getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
 
 import { firestore } from "./firebaseConfig";
 import type { ChallengeDoc, CircleDoc, JoinCodeDoc } from "./types";
+
+// The standard name every account's auto-created solo circle gets — see
+// createPersonalCircle below.
+export const PERSONAL_CIRCLE_NAME = "Me, Myself & I";
 
 // Unambiguous alphabet — excludes 0/O/1/I/L so a code read aloud or
 // typed from a screenshot doesn't get miskeyed.
@@ -60,6 +64,29 @@ export async function createCircle(name: string, creatorId: string): Promise<{ c
   });
 
   return { circleId: circleDocRef.id, joinCode };
+}
+
+// Called once, right after a new account's profile doc is created (see
+// signUpWithEmail) — every user gets exactly one of these, named the
+// same for everyone, with the same standard rules (see
+// src/constants/personalCircleRules.ts). Deliberately skips the
+// /joinCodes lookup entry createCircle writes: with no code to look up,
+// joinCircleByCode can never resolve anyone into this circle, so it
+// stays solo by construction (isSelfJoin in firestore.rules blocks it
+// too, defensively, in case a code ever leaked some other way).
+export async function createPersonalCircle(userId: string): Promise<string> {
+  const circleDocRef = doc(collection(firestore, "circles"));
+  const circle: CircleDoc = {
+    name: PERSONAL_CIRCLE_NAME,
+    creatorId: userId,
+    members: [userId],
+    usedPrompts: [],
+    activeChallengeId: null,
+    joinCode: "",
+    isPersonal: true,
+  };
+  await setDoc(circleDocRef, circle);
+  return circleDocRef.id;
 }
 
 export async function joinCircleByCode(code: string, userId: string): Promise<string> {

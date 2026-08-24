@@ -3,7 +3,6 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -22,12 +21,20 @@ import type {
   AgreementState,
   ChallengeDoc,
   CircleDoc,
+  FrameUnlock,
   PromptDoc,
   PromptLockDoc,
   ScoringEventDoc,
   UserProfile,
   WithId,
 } from "./types";
+import {
+  CHALLENGE_COMPLETION_MILESTONES,
+  FRAME_REWARDS,
+  FRIEND_CHALLENGE_MIN_TEAM_SIZE,
+  WEEKLY_CHALLENGE_MIN_HOURS,
+  type RewardFrameId,
+} from "../src/constants/frames";
 
 function circleRef(circleId: string) {
   return doc(firestore, "circles", circleId);
@@ -401,38 +408,54 @@ export async function checkAndCompleteChallengeIfDone(circleId: string, challeng
   }
 }
 
-// Pays out the two rewards a completed challenge can grant: every
-// participant (both teams) gets +1 stats.challengesCompleted, and every
-// member of the strictly-higher-scoring team additionally unlocks the
-// "frameWin" reward frame. A tie (or a challenge nobody scored on) still
-// credits challengesCompleted for everyone but hands out no frameWin.
-//
-// Scores are read fresh from scoringEvents right before the transaction
-// rather than trusting a caller-supplied total, since a client's local
-// scoreboard listener could still be catching up. The transaction itself
-// re-checks status/rewardsGranted before writing anything, so it's safe
-// to call this from every member's client the moment they see
-// status === "completed" — whichever one gets there first wins the
-// transaction and the rest no-op against the now-committed flag.
-export async function awardChallengeRewards(circleId: string, challengeId: string): Promise<void> {
-  const eventsSnap = await getDocs(scoringEventsCol(circleId, challengeId));
-  const totals: Record<string, number> = {};
-  eventsSnap.forEach((d) => {
-    const event = d.data() as ScoringEventDoc;
-    totals[event.teamId] = (totals[event.teamId] ?? 0) + event.pointsAwarded;
-  });
+// Figures out which reward frames (if any) a participant newly unlocks by
+// completing this challenge — the count milestones (3/7/10 challenges)
+// plus the one-off type-based rules, per src/constants/frames.ts. Skips
+// any frameId the participant already has. teamSize is the size of the
+// team this particular participant was actually on, since a "friend"
+// challenge means they had a teammate, not just that the challenge as a
+// whole had multiple people across both sides.
+function newlyUnlockedChallengeFrames(
+  challenge: ChallengeDoc,
+  newChallengesCompleted: number,
+  teamSize: number,
+  alreadyUnlockedIds: Set<string>
+): FrameUnlock[] {
+  const toGrant = new Set<RewardFrameId>();
 
+  for (const milestone of CHALLENGE_COMPLETION_MILESTONES) {
+    if (newChallengesCompleted >= milestone.count) toGrant.add(milestone.frameId);
+  }
+  if (challenge.promptType === "daily") toGrant.add("Frame_Daily_Challenge");
+  if (challenge.promptType === "time_sensitive") toGrant.add("Frame_Time_Sensitive_Challenge");
+  if (teamSize >= FRIEND_CHALLENGE_MIN_TEAM_SIZE) toGrant.add("Frame_Friend_Challenge");
+  if (challenge.promptType === "daily" && (challenge.timeline.durationHours ?? 0) >= WEEKLY_CHALLENGE_MIN_HOURS) {
+    toGrant.add("Frame_Weekly_Challenge");
+  }
+
+  const now = Timestamp.now();
+  return Array.from(toGrant)
+    .filter((frameId) => !alreadyUnlockedIds.has(frameId))
+    .map((frameId) => ({ frameId, unlockedAt: now, reason: FRAME_REWARDS[frameId].message }));
+}
+
+// Pays out every reward a completed challenge can grant: +1
+// stats.challengesCompleted for every participant (both teams, win or
+// lose — completion is purely time-based, see
+// checkAndCompleteChallengeIfDone), plus whichever reward frames they
+// newly cross per newlyUnlockedChallengeFrames above.
+//
+// The transaction re-checks status/rewardsGranted before writing
+// anything, so it's safe to call this from every member's client the
+// moment they see status === "completed" — whichever one gets there
+// first wins the transaction and the rest no-op against the now-
+// committed flag.
+export async function awardChallengeRewards(circleId: string, challengeId: string): Promise<void> {
   await runTransaction(firestore, async (transaction) => {
     const challengeSnap = await transaction.get(challengeRef(circleId, challengeId));
     if (!challengeSnap.exists()) return;
     const challenge = challengeSnap.data() as ChallengeDoc;
     if (challenge.status !== "completed" || challenge.rewardsGranted) return;
-
-    const teamScores = Object.keys(challenge.teams).map((teamId) => ({ teamId, score: totals[teamId] ?? 0 }));
-    const topScore = Math.max(0, ...teamScores.map((t) => t.score));
-    const leaders = teamScores.filter((t) => t.score === topScore && topScore > 0);
-    const winningTeamId = leaders.length === 1 ? leaders[0].teamId : null;
-    const winnerIds = new Set(winningTeamId ? challenge.teams[winningTeamId] : []);
 
     const participantIds = Array.from(new Set(Object.values(challenge.teams).flat()));
     const userSnaps = await Promise.all(participantIds.map((id) => transaction.get(doc(firestore, "users", id))));
@@ -442,12 +465,15 @@ export async function awardChallengeRewards(circleId: string, challengeId: strin
       if (!userSnap.exists()) return;
       const profile = userSnap.data() as UserProfile;
 
-      const unlockedFrames = new Set(profile.unlockedFrames ?? []);
-      if (winnerIds.has(userId)) unlockedFrames.add("frameWin");
+      const frameUnlocks = profile.frameUnlocks ?? [];
+      const alreadyUnlockedIds = new Set(frameUnlocks.map((f) => f.frameId));
+      const teamSize = Object.values(challenge.teams).find((members) => members.includes(userId))?.length ?? 1;
+      const newChallengesCompleted = (profile.stats?.challengesCompleted ?? 0) + 1;
+      const newUnlocks = newlyUnlockedChallengeFrames(challenge, newChallengesCompleted, teamSize, alreadyUnlockedIds);
 
       transaction.update(doc(firestore, "users", userId), {
-        "stats.challengesCompleted": (profile.stats?.challengesCompleted ?? 0) + 1,
-        unlockedFrames: Array.from(unlockedFrames),
+        "stats.challengesCompleted": newChallengesCompleted,
+        frameUnlocks: [...frameUnlocks, ...newUnlocks],
       });
     });
 

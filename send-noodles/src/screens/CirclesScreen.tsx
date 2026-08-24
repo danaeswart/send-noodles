@@ -90,7 +90,14 @@ export default function CirclesScreen() {
   const goToCircle = (circleId: string) => {
     setHiddenCircleId(null);
     setPendingScroll({ circleId, animated: false });
-    navigation.navigate("CircleDetail", { circleId });
+    // The one auto-created "Me, Myself & I" circle (see
+    // createPersonalCircle) opens its own screen instead of the normal
+    // CircleDetail — no join code, wager, or invite flow applies to it.
+    // Safe to look up in `circles` here: goToCircle only ever fires from
+    // a CircleCard's onPress, which means this circle is already
+    // rendered in the current page list.
+    const isPersonal = circles.find((c) => c.id === circleId)?.isPersonal ?? false;
+    navigation.navigate(isPersonal ? "PersonalCircle" : "CircleDetail", { circleId });
   };
 
   // "view circle" after creating one, and "join circle" after entering a

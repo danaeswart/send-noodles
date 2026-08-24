@@ -5,11 +5,16 @@ const FRAME_SOURCES: Record<FrameKey, ImageSourcePropType> = {
   frame1: require("../../../assets/frames/frame1.png"),
   frame2: require("../../../assets/frames/frame2.png"),
   frame3: require("../../../assets/frames/frame3.png"),
-  // Same art as the profile's reward badges (constants/frames.ts) —
-  // frameTen shares frame1's geometry, frameFrst/frameWin share frame3's.
-  frameFrst: require("../../../assets/frames/frameFrst.png"),
-  frameTen: require("../../../assets/frames/frameTen.png"),
-  frameWin: require("../../../assets/frames/frameWin.png"),
+  // Same art as the profile's reward badges (constants/frames.ts).
+  Frame_First: require("../../../assets/frames/Frame_First.png"),
+  Frame_Three: require("../../../assets/frames/Frame_Three.png"),
+  Frame_Five: require("../../../assets/frames/Frame_five.png"),
+  Frame_Seven: require("../../../assets/frames/Frame_Seven.png"),
+  Frame_Ten: require("../../../assets/frames/Frame_Ten.png"),
+  Frame_Daily_Challenge: require("../../../assets/frames/Frame_Daily_Challenge.png"),
+  Frame_Time_Sensitive_Challenge: require("../../../assets/frames/Frame_Time_Sensitive_Challenge.png"),
+  Frame_Friend_Challenge: require("../../../assets/frames/Frame_Friend_Challenge.png"),
+  Frame_Weekly_Challenge: require("../../../assets/frames/Frame_Weekly_Challenge.png"),
 };
 
 // Fraction of the frame's size taken up by its border on each side —
@@ -20,9 +25,15 @@ const FRAME_INSET: Record<FrameKey, number> = {
   frame1: 0.22,
   frame2: 0.15,
   frame3: 0.14,
-  frameFrst: 0.14,
-  frameTen: 0.22,
-  frameWin: 0.14,
+  Frame_First: 0.14,
+  Frame_Three: 0.14,
+  Frame_Five: 0.14,
+  Frame_Seven: 0.14,
+  Frame_Ten: 0.22,
+  Frame_Daily_Challenge: 0.14,
+  Frame_Time_Sensitive_Challenge: 0.14,
+  Frame_Friend_Challenge: 0.14,
+  Frame_Weekly_Challenge: 0.14,
 };
 
 type Props = {
@@ -39,7 +50,7 @@ export default function FramedPhoto({ frame, photo, size, style }: Props) {
 
   return (
     <View style={[{ width: size, height: size }, style]}>
-      <Image source={FRAME_SOURCES[frame]} resizeMode="stretch" style={styles.frame} />
+      <Image source={FRAME_SOURCES[frame]} resizeMode="contain" style={styles.frame} />
       {photo ? (
         <Image
           source={photo}

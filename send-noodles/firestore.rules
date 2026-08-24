@@ -19,6 +19,13 @@ service cloud.firestore {
     // the circle, and only if they weren't already a member.
     function isSelfJoin() {
       return isSignedIn() &&
+        // A personal circle (isPersonal: true) has no /joinCodes entry,
+        // so the app itself can never route anyone into this branch for
+        // one — this is a defensive backstop against a hand-crafted
+        // write, not something normal use ever hits. get(key, default)
+        // keeps this safe for every ordinary circle too, which has no
+        // isPersonal field at all.
+        resource.data.get("isPersonal", false) == false &&
         !(request.auth.uid in resource.data.members) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["members"]) &&
         request.resource.data.members == resource.data.members.concat([request.auth.uid]);
@@ -45,7 +52,7 @@ service cloud.firestore {
     // are shown across circles). Creating/renaming/etc. a profile is
     // always restricted to its own owner. Updates get one narrow
     // carve-out: any signed-in user may bump another member's
-    // stats/unlockedFrames, since snap-count milestones and challenge-win
+    // stats/frameUnlocks, since snap-count and challenge-completion
     // rewards are paid out client-side (no Cloud Functions on the Spark
     // plan — see recordSnapSent/awardChallengeRewards) and can touch
     // teammates' or opponents' docs, not just the caller's own. Every
@@ -56,7 +63,7 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if isSignedIn() && (
         request.auth.uid == userId ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["stats", "unlockedFrames"])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["stats", "frameUnlocks"])
       );
       // Only the owner may delete their own profile — part of the
       // account-deletion flow (see deleteAccount in firebase/auth.ts).
@@ -228,9 +235,9 @@ service cloud.firestore {
             request.resource.data.agreementStatus == resource.data.agreementStatus
           ) ||
           // completed: the one-time rewardsGranted flag may flip to true,
-          // marking that challengesCompleted/frameWin have been paid out
-          // for this challenge (see awardChallengeRewards) — everything
-          // else about a completed challenge stays frozen.
+          // marking that challengesCompleted/frameUnlocks have been paid
+          // out for this challenge (see awardChallengeRewards) —
+          // everything else about a completed challenge stays frozen.
           (
             resource.data.status == "completed" &&
             request.resource.data.status == "completed" &&

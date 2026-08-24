@@ -37,9 +37,11 @@ export default function CircleCard({ circle, color, isLastCircle, pageHeight, on
 
         <View style={styles.contentPanel}>
           <View style={styles.challengePanel}>
-            <Text style={styles.challengeLabel}>CURRENT CHALLENGE</Text>
+            <Text style={styles.challengeLabel}>{circle.isPersonal ? "PERSONAL CIRCLE" : "CURRENT CHALLENGE"}</Text>
             <Text style={styles.challengeStatus}>
-              {challenge?.promptText ?? "no active challenge yet — tap to start one"}
+              {circle.isPersonal
+                ? "just you — snap anytime"
+                : (challenge?.promptText ?? "no active challenge yet — tap to start one")}
             </Text>
           </View>
 

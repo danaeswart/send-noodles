@@ -1,28 +1,51 @@
-import { View, Text, Image, StyleSheet } from "react-native";
+import { useState } from "react";
+import { View, Text, Image, Pressable, StyleSheet } from "react-native";
+
 import { colors, spacing, type } from "../../constants/theme";
 import { frameRewardForId } from "../../constants/frames";
+import type { FrameUnlock } from "../../../firebase/types";
+import FrameRewardModal from "../frames/FrameRewardModal";
 
 type Props = {
-  frameIds: string[];
+  frameUnlocks: FrameUnlock[];
 };
 
-export default function FrameSwatches({ frameIds }: Props) {
+function formatUnlockDate(unlockedAt: FrameUnlock["unlockedAt"]) {
+  return unlockedAt.toDate().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+export default function FrameSwatches({ frameUnlocks }: Props) {
+  const [selected, setSelected] = useState<FrameUnlock | null>(null);
+  const selectedReward = selected ? frameRewardForId(selected.frameId) : null;
+
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>Unlocked Frames</Text>
-      {frameIds.length === 0 ? (
+      {frameUnlocks.length === 0 ? (
         <Text style={styles.empty}>send your first snap to unlock one</Text>
       ) : (
         <View style={styles.row}>
-          {frameIds.map((id) => {
-            const frame = frameRewardForId(id);
+          {frameUnlocks.map((unlock) => {
+            const frame = frameRewardForId(unlock.frameId);
             return frame ? (
-              <Image key={id} source={frame.source} style={styles.swatch} resizeMode="cover" />
+              <Pressable key={unlock.frameId} onPress={() => setSelected(unlock)}>
+                <Image source={frame.source} style={styles.swatch} resizeMode="cover" />
+              </Pressable>
             ) : (
-              <View key={id} style={[styles.swatch, styles.unknownSwatch]} />
+              <View key={unlock.frameId} style={[styles.swatch, styles.unknownSwatch]} />
             );
           })}
         </View>
+      )}
+
+      {selected && selectedReward && (
+        <FrameRewardModal
+          visible
+          onDismiss={() => setSelected(null)}
+          frameSource={selectedReward.source}
+          heading={`Unlocked ${formatUnlockDate(selected.unlockedAt)}`}
+          message={selected.reason}
+        />
       )}
     </View>
   );

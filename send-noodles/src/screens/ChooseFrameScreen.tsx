@@ -30,9 +30,9 @@ export default function ChooseFrameScreen() {
   const { profile } = useUserProfile(user?.uid ?? null);
   const snap = memories.find((m) => m.id === route.params.snapId);
 
-  const unlockedFrameIds = (profile?.unlockedFrames ?? []).filter(
-    (id): id is RewardFrameId => !!frameRewardForId(id)
-  );
+  const unlockedFrameIds = (profile?.frameUnlocks ?? [])
+    .map((unlock) => unlock.frameId)
+    .filter((id): id is RewardFrameId => !!frameRewardForId(id));
 
   const [selectedFrame, setSelectedFrame] = useState<RewardFrameId | null>(null);
   const [isSaving, setIsSaving] = useState(false);

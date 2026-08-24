@@ -12,7 +12,7 @@ import {
 import { collection, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 
 import { auth, firestore } from "./firebaseConfig";
-import { leaveCircle } from "./circles";
+import { createPersonalCircle, leaveCircle } from "./circles";
 import type { UserProfile } from "./types";
 
 export async function signUpWithEmail(email: string, password: string, firstName: string, surname: string) {
@@ -28,10 +28,18 @@ export async function signUpWithEmail(email: string, password: string, firstName
     avatarUrl: null,
     avatarId: null,
     stats: { challengesCompleted: 0, streak: 0, totalSnaps: 0 },
-    unlockedFrames: [],
+    frameUnlocks: [],
     createdAt: serverTimestamp(),
   };
   await setDoc(doc(firestore, "users", credential.user.uid), profile);
+
+  // Every new account gets the same standard solo "Me, Myself & I"
+  // circle automatically — see createPersonalCircle. Best-effort: if
+  // this fails (e.g. a network blip right after signup), the account
+  // still exists and works normally, just without that circle yet;
+  // there's no retry queue for it since there's no Cloud Functions
+  // backend on the Spark plan to run one.
+  await createPersonalCircle(credential.user.uid);
 
   return credential.user;
 }

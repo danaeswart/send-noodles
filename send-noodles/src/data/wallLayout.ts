@@ -2,11 +2,13 @@
 // source for both the Firestore-backed data (useGalleryWall) and the
 // rendering side (FramedPhoto, WallFrame).
 
+import type { RewardFrameId } from "../constants/frames";
+
 // The Gallery Wall's own 3 decorative frame styles, plus the profile's
-// reward-badge frames (frameFrst/frameTen/frameWin — see
-// constants/frames.ts) which share the exact same hole geometry and
-// are what a user actually picks from when adding a snap to the wall.
-export type FrameKey = "frame1" | "frame2" | "frame3" | "frameFrst" | "frameTen" | "frameWin";
+// reward-badge frames (see constants/frames.ts) which share the exact
+// same hole geometry and are what a user actually picks from when
+// adding a snap to the wall.
+export type FrameKey = "frame1" | "frame2" | "frame3" | RewardFrameId;
 
 export interface WallPhoto {
   id: string;

@@ -6,6 +6,18 @@ import type { Timestamp } from "firebase/firestore";
 
 export type WithId<T> = T & { id: string };
 
+// One reward frame a user has unlocked, plus when and why — powers both
+// the full-screen "new frame unlocked!" celebration (shown the moment a
+// user's own client next sees a frameId it didn't have before) and the
+// per-frame detail view on the profile page. Granted by recordSnapSent
+// (firebase/users.ts) and awardChallengeRewards (firebase/challenges.ts),
+// per the rules in src/constants/frames.ts.
+export interface FrameUnlock {
+  frameId: string;
+  unlockedAt: Timestamp;
+  reason: string;
+}
+
 // /users/{userId}
 export interface UserProfile {
   firstName: string;
@@ -17,10 +29,9 @@ export interface UserProfile {
   // this user picked — null until they choose one on the profile page.
   avatarId: string | null;
   stats: { challengesCompleted: number; streak: number; totalSnaps: number };
-  // Reward frame ids unlocked via snap-count milestones and challenge wins
-  // (see SNAP_MILESTONES in firebase/users.ts and awardChallengeRewards in
-  // firebase/challenges.ts) — each maps to an asset in assets/frames/.
-  unlockedFrames: string[];
+  // Every reward frame this user has unlocked, in the order they were
+  // granted. See FrameUnlock above.
+  frameUnlocks: FrameUnlock[];
   createdAt: Timestamp;
 }
 
@@ -32,6 +43,13 @@ export interface CircleDoc {
   usedPrompts: string[];
   activeChallengeId: string | null;
   joinCode: string;
+  // True only for the single "Me, Myself & I" circle every user gets
+  // automatically on signup (see createPersonalCircle) — solo,
+  // unjoinable (no /joinCodes entry is ever created for it, and
+  // firestore.rules blocks isSelfJoin on it too), and rendered by
+  // PersonalCircleScreen instead of the normal CircleDetailScreen.
+  // Absent/false for every ordinary circle.
+  isPersonal?: boolean;
 }
 
 // /joinCodes/{code} — id is the code itself. A minimal, readable-by-any-
@@ -68,7 +86,7 @@ export interface ChallengeDoc {
   createdBy: string;
   createdAt: Timestamp;
   // One-time flag set by awardChallengeRewards once challengesCompleted /
-  // frameWin have been paid out for this challenge — guards against
+  // frameUnlocks have been paid out for this challenge — guards against
   // double-awarding when more than one member's client notices the
   // "completed" status at once. Absent (undefined) is equivalent to false.
   rewardsGranted?: boolean;

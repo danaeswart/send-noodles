@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import SwipeNavigator from "./SwipeNavigator";
 import SnapReviewScreen from "../screens/SnapReviewScreen";
 import CircleDetailScreen from "../screens/CircleDetailScreen";
+import PersonalCircleScreen from "../screens/PersonalCircleScreen";
 import ChallengeSetupScreen from "../screens/ChallengeSetupScreen";
 import MembersScreen from "../screens/MembersScreen";
 import MemoriesScreen from "../screens/MemoriesScreen";
@@ -15,6 +16,9 @@ import LoginScreen from "../screens/auth/LoginScreen";
 import SignUpScreen from "../screens/auth/SignUpScreen";
 import { RootStackParamList } from "./types";
 import { useAuthUser } from "../hooks/useAuthUser";
+import { useFrameUnlockQueue } from "../hooks/useFrameUnlockQueue";
+import FrameRewardModal from "../components/frames/FrameRewardModal";
+import { frameRewardForId } from "../constants/frames";
 import { colors } from "../constants/theme";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -35,38 +39,53 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 // and navigate the user anywhere.
 export default function RootNavigator() {
   const { user, loading } = useAuthUser();
+  const { current: newlyUnlockedFrame, dismissTop } = useFrameUnlockQueue(user?.uid ?? null);
+  const newlyUnlockedReward = newlyUnlockedFrame ? frameRewardForId(newlyUnlockedFrame.frameId) : null;
 
   if (loading) {
     return <View style={{ flex: 1, backgroundColor: colors.paper }} />;
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {user ? (
-          <>
-            <Stack.Screen name="Main" component={SwipeNavigator} />
-            <Stack.Screen
-              name="SnapReview"
-              component={SnapReviewScreen}
-              options={{ presentation: "modal" }}
-            />
-            <Stack.Screen name="CircleDetail" component={CircleDetailScreen} />
-            <Stack.Screen name="ChallengeSetup" component={ChallengeSetupScreen} />
-            <Stack.Screen name="Members" component={MembersScreen} />
-            <Stack.Screen name="Memories" component={MemoriesScreen} />
-            <Stack.Screen name="MemoryDetail" component={MemoryDetailScreen} />
-            <Stack.Screen name="ChooseFrame" component={ChooseFrameScreen} />
-            <Stack.Screen name="CircleSnaps" component={CircleSnapsScreen} />
-            <Stack.Screen name="CircleSnapDetail" component={CircleSnapDetailScreen} />
-          </>
-        ) : (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="SignUp" component={SignUpScreen} />
-          </>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          {user ? (
+            <>
+              <Stack.Screen name="Main" component={SwipeNavigator} />
+              <Stack.Screen
+                name="SnapReview"
+                component={SnapReviewScreen}
+                options={{ presentation: "modal" }}
+              />
+              <Stack.Screen name="CircleDetail" component={CircleDetailScreen} />
+              <Stack.Screen name="PersonalCircle" component={PersonalCircleScreen} />
+              <Stack.Screen name="ChallengeSetup" component={ChallengeSetupScreen} />
+              <Stack.Screen name="Members" component={MembersScreen} />
+              <Stack.Screen name="Memories" component={MemoriesScreen} />
+              <Stack.Screen name="MemoryDetail" component={MemoryDetailScreen} />
+              <Stack.Screen name="ChooseFrame" component={ChooseFrameScreen} />
+              <Stack.Screen name="CircleSnaps" component={CircleSnapsScreen} />
+              <Stack.Screen name="CircleSnapDetail" component={CircleSnapDetailScreen} />
+            </>
+          ) : (
+            <>
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="SignUp" component={SignUpScreen} />
+            </>
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+      {newlyUnlockedFrame && newlyUnlockedReward && (
+        <FrameRewardModal
+          visible
+          onDismiss={dismissTop}
+          frameSource={newlyUnlockedReward.source}
+          heading="New frame unlocked!"
+          message={newlyUnlockedFrame.reason}
+          footerNote="Go to the Gallery Wall to view this frame."
+        />
+      )}
+    </>
   );
 }

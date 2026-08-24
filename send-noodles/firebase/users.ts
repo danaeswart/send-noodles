@@ -5,12 +5,14 @@ import {
   onSnapshot,
   query,
   runTransaction,
+  Timestamp,
   where,
   type Unsubscribe,
 } from "firebase/firestore";
 
 import { firestore } from "./firebaseConfig";
-import type { UserProfile, WithId } from "./types";
+import type { FrameUnlock, UserProfile, WithId } from "./types";
+import { FRAME_REWARDS, SNAP_MILESTONES } from "../src/constants/frames";
 
 function userRef(userId: string) {
   return doc(firestore, "users", userId);
@@ -52,19 +54,12 @@ export async function setAvatarId(userId: string, avatarId: string) {
   });
 }
 
-// Snap-count milestones that unlock a reward frame — checked against the
-// running total every time a snap is sent (see recordSnapSent below). Add
-// a tier here plus a matching PNG in assets/frames/ to extend the ladder.
-export const SNAP_MILESTONES: { count: number; frameId: string }[] = [
-  { count: 1, frameId: "frameFrst" },
-  { count: 10, frameId: "frameTen" },
-];
-
 // Called once per snap send, regardless of whether it counted toward a
 // challenge — every snap bumps the sender's lifetime tally, shown on the
 // profile page under "Snaps", and unlocks any milestone frame just
-// crossed. Runs as a transaction since it's a read-then-increment on the
-// user's own doc (safe to call rapidly without racing itself).
+// crossed (see SNAP_MILESTONES in src/constants/frames.ts). Runs as a
+// transaction since it's a read-then-increment on the user's own doc
+// (safe to call rapidly without racing itself).
 export async function recordSnapSent(userId: string): Promise<void> {
   await runTransaction(firestore, async (transaction) => {
     const snap = await transaction.get(userRef(userId));
@@ -72,14 +67,23 @@ export async function recordSnapSent(userId: string): Promise<void> {
     const profile = snap.data() as UserProfile;
 
     const totalSnaps = (profile.stats?.totalSnaps ?? 0) + 1;
-    const unlockedFrames = new Set(profile.unlockedFrames ?? []);
+    const frameUnlocks = profile.frameUnlocks ?? [];
+    const unlockedIds = new Set(frameUnlocks.map((f) => f.frameId));
+    const newUnlocks: FrameUnlock[] = [];
     for (const milestone of SNAP_MILESTONES) {
-      if (totalSnaps >= milestone.count) unlockedFrames.add(milestone.frameId);
+      if (totalSnaps >= milestone.count && !unlockedIds.has(milestone.frameId)) {
+        unlockedIds.add(milestone.frameId);
+        newUnlocks.push({
+          frameId: milestone.frameId,
+          unlockedAt: Timestamp.now(),
+          reason: FRAME_REWARDS[milestone.frameId].message,
+        });
+      }
     }
 
     transaction.update(userRef(userId), {
       "stats.totalSnaps": totalSnaps,
-      unlockedFrames: Array.from(unlockedFrames),
+      frameUnlocks: [...frameUnlocks, ...newUnlocks],
     });
   });
 }

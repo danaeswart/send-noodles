@@ -74,7 +74,7 @@ export default function ProfileStatsPage({ isActive }: Props) {
       </Animated.View>
 
       <Animated.View style={fadeStyle}>
-        <FrameSwatches frameIds={profile?.unlockedFrames ?? []} />
+        <FrameSwatches frameUnlocks={profile?.frameUnlocks ?? []} />
       </Animated.View>
 
       <Animated.View style={fadeStyle}>

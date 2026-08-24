@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { subscribeToChallenge } from "../../firebase/challenges";
 import type { ChallengeDoc, WithId } from "../../firebase/types";
 import { randomIllustration } from "../constants/illustrations";
+import { PERSONAL_CIRCLE_CHALLENGE_TEXT } from "../constants/personalCircleChallenge";
 import type { HomeChallengeCard } from "../types/homeChallenge";
 import { useMyCircles } from "./useMyCircles";
 
@@ -37,6 +38,20 @@ export function useHomeChallenges(userId: string | null): HomeChallengeCard[] {
         if (illustrations.current[circle.id] === undefined) {
           illustrations.current[circle.id] = randomIllustration();
         }
+        // The personal circle never has a real activeChallengeId — its
+        // "challenge" is the same fixed text every day (see
+        // PERSONAL_CIRCLE_CHALLENGE_TEXT), not a Firestore doc, so it
+        // skips the subscription-backed lookup below entirely.
+        if (circle.isPersonal) {
+          return {
+            circleId: circle.id,
+            circleName: circle.name,
+            memberIds: circle.members,
+            challenge: { promptText: PERSONAL_CIRCLE_CHALLENGE_TEXT },
+            illustrationSource: illustrations.current[circle.id],
+          };
+        }
+
         const rawChallenge = circle.activeChallengeId ? (challenges[circle.id] ?? null) : null;
         return {
           circleId: circle.id,

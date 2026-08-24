@@ -4,7 +4,20 @@ import { subscribeToPersonalSnaps, updateSnapWallPlacement, type GallerySnap } f
 import { FrameKey, WallPhoto } from "../data/wallLayout";
 import type { WallPhotoPatch } from "../components/gallery/WallFrame";
 
-const KNOWN_FRAME_KEYS: FrameKey[] = ["frame1", "frame2", "frame3", "frameFrst", "frameTen", "frameWin"];
+const KNOWN_FRAME_KEYS: FrameKey[] = [
+  "frame1",
+  "frame2",
+  "frame3",
+  "Frame_First",
+  "Frame_Three",
+  "Frame_Five",
+  "Frame_Seven",
+  "Frame_Ten",
+  "Frame_Daily_Challenge",
+  "Frame_Time_Sensitive_Challenge",
+  "Frame_Friend_Challenge",
+  "Frame_Weekly_Challenge",
+];
 const DEFAULT_FRAME: FrameKey = "frame1";
 
 // A snap only reaches the wall through the Memories -> choose a frame
