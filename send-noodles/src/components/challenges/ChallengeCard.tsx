@@ -187,24 +187,19 @@ const styles = StyleSheet.create({
     color: colors.ink,
     marginTop: spacing.lg,
   },
-  illustrationWrap: {
-  width: "145%",
-  alignSelf: "flex-start",
-  marginLeft: -200,
-},
-illustration: {
-  width: "100%",
-  height: 340,
-},
-illustrationContainer: {
-  height: SCREEN_HEIGHT * 0.30, // around a third of the screen
-  justifyContent: "center",
-  alignItems: "flex-end",
-  overflow: "hidden",
-},
-illustrationContainerBig: {
-  height: SCREEN_HEIGHT * 0.42,
-},
+  illustrationContainer: {
+    height: SCREEN_HEIGHT * 0.38,
+    justifyContent: "center",
+    alignItems: "flex-end",
+    // Not clipped — IllustrationSlot's image is deliberately wider than
+    // this container and pulled past its right edge so it bleeds off
+    // the physical screen, rather than being cut off neatly at the
+    // container bound.
+    overflow: "visible",
+  },
+  illustrationContainerBig: {
+    height: SCREEN_HEIGHT * 0.5,
+  },
   hintWrap: { flex: 1, justifyContent: "flex-end", alignItems: "center", paddingBottom: spacing.xxl },
   hint: { ...type.caption, color: colors.muted },
 });

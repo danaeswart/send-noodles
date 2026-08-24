@@ -38,29 +38,25 @@ export default function LoginScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <FloatingIllustration
-        color={colors.accent}
-        size={110}
+        size={150}
         delay={0}
         duration={2600}
         style={{ position: "absolute", top: insets.top + spacing.xl, left: -30 }}
       />
       <FloatingIllustration
-        color="#D9A62E"
-        size={80}
+        size={110}
         delay={400}
         duration={2200}
         style={{ position: "absolute", top: insets.top + 150, right: -20 }}
       />
       <FloatingIllustration
-        color="#6C63FF"
-        size={70}
+        size={95}
         delay={800}
         duration={3000}
         style={{ position: "absolute", bottom: insets.bottom + 150, left: 10 }}
       />
       <FloatingIllustration
-        color={colors.alert}
-        size={90}
+        size={125}
         delay={200}
         duration={2800}
         style={{ position: "absolute", bottom: insets.bottom + 40, right: 10 }}

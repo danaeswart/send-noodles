@@ -24,7 +24,7 @@ export default function IllustrationSlot({ source, big }: Props) {
 
 const styles = StyleSheet.create({
   placeholder: {
-    height: 220,
+    height: 260,
     borderWidth: 1,
     borderStyle: "dashed",
     borderColor: colors.line,
@@ -32,6 +32,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   placeholderText: { ...type.caption, color: colors.muted },
-  image: { height: 220, width: "100%" },
-  big: { height: 300 },
+  // Deliberately wider than the card and pulled past its own right edge
+  // (negative marginRight beats out the card's horizontal padding) so
+  // the illustration bleeds off the physical screen edge rather than
+  // sitting neatly inside it.
+  image: { height: 260, width: "125%", alignSelf: "flex-end", marginRight: -56 },
+  big: { height: 340, width: "135%", marginRight: -72 },
 });

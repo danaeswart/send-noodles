@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { StyleSheet, Text, ViewStyle } from "react-native";
+import { useEffect, useState } from "react";
+import { ImageSourcePropType, ViewStyle } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -9,11 +9,11 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import { spacing, type } from "../../constants/theme";
+import { randomIllustration } from "../../constants/illustrations";
 
 type Props = {
+  source?: ImageSourcePropType;
   size?: number;
-  color?: string;
   drift?: number; // vertical float distance in px, each direction
   duration?: number; // one-way duration in ms
   delay?: number; // stagger so shapes don't move in lockstep
@@ -21,20 +21,20 @@ type Props = {
   style?: ViewStyle;
 };
 
-// Decorative stand-in for a future illustration asset. Renders as a
-// soft colour block that gently bobs and tilts in place, so the empty
-// background reads as "alive" before any real artwork exists. Once
-// illustrations land, swap the <Text> label here for an <Image> — the
-// floating wrapper and animation stay the same.
+// Gently bobbing/tilting illustration art. Picks a random image from
+// assets/illustrations/ (see src/constants/illustrations.ts) unless a
+// specific source is passed in, so Login/SignUp get a different mix of
+// art each time the screen mounts.
 export default function FloatingIllustration({
+  source,
   size = 96,
-  color = "#3F6E66",
   drift = 12,
   duration = 2400,
   delay = 0,
   spin = 6,
   style,
 }: Props) {
+  const [imageSource] = useState<ImageSourcePropType>(() => source ?? randomIllustration());
   const float = useSharedValue(0);
   const tilt = useSharedValue(0);
 
@@ -68,21 +68,11 @@ export default function FloatingIllustration({
   }));
 
   return (
-    <Animated.View
+    <Animated.Image
       pointerEvents="none"
-      style={[styles.wrap, { width: size, height: size, backgroundColor: color }, animatedStyle, style]}
-    >
-      <Text style={styles.label}>illustration</Text>
-    </Animated.View>
+      source={imageSource}
+      resizeMode="contain"
+      style={[{ width: size, height: size }, animatedStyle, style]}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    borderRadius: spacing.xl,
-    alignItems: "center",
-    justifyContent: "center",
-    opacity: 0.9,
-  },
-  label: { ...type.caption, color: "rgba(255,255,255,0.6)", fontSize: 10 },
-});

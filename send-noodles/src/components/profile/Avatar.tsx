@@ -10,7 +10,7 @@ type Props = {
 // Square, hard-edged avatar frame — deliberately not rounded, matching
 // the deck's sharp-corner language. Shows a dashed placeholder until a
 // real illustration/photo asset is passed in.
-export default function Avatar({ source, size = 132, style }: Props) {
+export default function Avatar({ source, size = 176, style }: Props) {
   if (!source) {
     return (
       <View style={[styles.placeholder, { width: size, height: size }, style]}>

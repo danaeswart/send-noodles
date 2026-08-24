@@ -3,9 +3,8 @@
 // build time — so each new illustrationN.png dropped in there needs one
 // line added below to actually enter the random-pick pool.
 export const ILLUSTRATIONS: number[] = [
-  require("../../assets/illustrations/noodleBowl.png"),
-  // require("../../assets/illustrations/illustration1.png"),
-  // require("../../assets/illustrations/illustration2.png"),
+  require("../../assets/illustrations/illustration1.png"),
+  require("../../assets/illustrations/illustration2.png"),
 ];
 
 export function randomIllustration(): number {

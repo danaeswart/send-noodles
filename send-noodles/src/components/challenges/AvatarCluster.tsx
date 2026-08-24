@@ -37,7 +37,7 @@ export default function AvatarCluster({ memberIds, profiles, max = 4 }: Props) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center" },
-  avatar: { width: 28, height: 28 },
-  spacing: { marginLeft: 8 },
-  overflow: { ...type.caption, color: colors.alert, marginLeft: 8 },
+  avatar: { width: 48, height: 48 },
+  spacing: { marginLeft: 10 },
+  overflow: { ...type.caption, fontSize: 15, color: colors.alert, marginLeft: 10 },
 });

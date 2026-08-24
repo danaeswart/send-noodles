@@ -41,29 +41,19 @@ export default function SignUpScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <FloatingIllustration
-        color="#2F5233"
-        size={90}
+        size={125}
         delay={100}
         duration={2500}
         style={{ position: "absolute", top: insets.top + spacing.lg, right: -25 }}
       />
       <FloatingIllustration
-        color={colors.accent}
-        size={70}
-        delay={500}
-        duration={2100}
-        style={{ position: "absolute", top: insets.top + 210, left: -15 }}
-      />
-      <FloatingIllustration
-        color="#D9A62E"
-        size={100}
+        size={135}
         delay={0}
         duration={2900}
         style={{ position: "absolute", bottom: insets.bottom + 170, right: -10 }}
       />
       <FloatingIllustration
-        color={colors.alert}
-        size={65}
+        size={90}
         delay={650}
         duration={2400}
         style={{ position: "absolute", bottom: insets.bottom + 30, left: 20 }}
@@ -75,7 +65,7 @@ export default function SignUpScreen({ navigation }: Props) {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.eyebrow}>send noodles</Text>
-          <Text style={styles.title}>Join the circle</Text>
+          <Text style={styles.title}>See whats snapping</Text>
           <Text style={styles.subtitle}>A few details and you're in.</Text>
 
           <View style={styles.row}>
