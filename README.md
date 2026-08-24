@@ -37,12 +37,9 @@ Complete challenges to unlock frames, send noodles, collect memories, and discov
 
 
 
-  
-  <p float="left">
-    <img src="./send-noodles/readme-assets/1.PNG"  />
-  
-  </p>
+   ![Send Noodles banner](/send-noodles/readme-assets/1.png)
 
+ 
 
 ## Diagrams
 
