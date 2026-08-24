@@ -17,6 +17,7 @@ import {
   updateDisplayName,
   updateEmailAddress,
 } from "../../../firebase/auth";
+import { useOnboarding } from "../../onboarding/OnboardingContext";
 
 // How long the "your account has been deleted" takeover stays up
 // before the Auth account is actually deleted (which signs the user
@@ -31,6 +32,7 @@ export default function ProfileSettingsPage() {
   const insets = useSafeAreaInsets();
   const { user } = useAuthUser();
   const { profile } = useUserProfile(user?.uid ?? null);
+  const onboarding = useOnboarding();
   const [preferences, setPreferences] = useState(mockProfile.settings.preferences);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -221,6 +223,9 @@ export default function ProfileSettingsPage() {
             onValueChange={() => togglePreference(pref.id)}
           />
         ))}
+
+        <Text style={[styles.sectionLabel, styles.sectionSpacing]}>Support</Text>
+        <ActionRow label="Help" onPress={() => onboarding.start()} />
 
         <Text style={[styles.sectionLabel, styles.sectionSpacing]}>No-No Zone</Text>
         <ActionRow label="log out" onPress={handleLogOut} />

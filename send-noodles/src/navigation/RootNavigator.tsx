@@ -2,6 +2,8 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import SwipeNavigator from "./SwipeNavigator";
+import { OnboardingProvider, useOnboarding } from "../onboarding/OnboardingContext";
+import OnboardingOverlay from "../onboarding/OnboardingOverlay";
 import SnapReviewScreen from "../screens/SnapReviewScreen";
 import CircleDetailScreen from "../screens/CircleDetailScreen";
 import PersonalCircleScreen from "../screens/PersonalCircleScreen";
@@ -18,25 +20,12 @@ import { RootStackParamList } from "./types";
 import { useAuthUser } from "../hooks/useAuthUser";
 import { useFrameUnlockQueue } from "../hooks/useFrameUnlockQueue";
 import FrameRewardModal from "../components/frames/FrameRewardModal";
-import { frameRewardForId } from "../constants/frames";
+import { frameRewardForId, FRAME_REWARDS } from "../constants/frames";
 import { colors } from "../constants/theme";
+import type { FrameUnlock } from "../../firebase/types";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-// Login/SignUp are the entry point ahead of "Main", the 5-panel swipe
-// deck. SnapReviewScreen and CircleDetailScreen push on top of Main —
-// modal-style tasks (review a just-captured photo, drill into one
-// circle's history) rather than part of the horizontal deck itself.
-//
-// Rendering the navigator is held until the persisted Firebase auth
-// session finishes restoring from AsyncStorage, so a signed-in user
-// never flashes the login screen first.
-//
-// The signed-in and signed-out screens are two separate <Stack.Screen>
-// groups switched on `user`, rather than a single stack with a fixed
-// initialRouteName — initialRouteName only picks the starting route on
-// first mount, so it wouldn't react to a later sign-out (or sign-in)
-// and navigate the user anywhere.
 export default function RootNavigator() {
   const { user, loading } = useAuthUser();
   const { current: newlyUnlockedFrame, dismissTop } = useFrameUnlockQueue(user?.uid ?? null);
@@ -47,7 +36,7 @@ export default function RootNavigator() {
   }
 
   return (
-    <>
+    <OnboardingProvider>
       <NavigationContainer>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {user ? (
@@ -75,17 +64,38 @@ export default function RootNavigator() {
             </>
           )}
         </Stack.Navigator>
+
+        <OnboardingOverlay />
       </NavigationContainer>
-      {newlyUnlockedFrame && newlyUnlockedReward && (
-        <FrameRewardModal
-          visible
-          onDismiss={dismissTop}
-          frameSource={newlyUnlockedReward.source}
-          heading="New frame unlocked!"
-          message={newlyUnlockedFrame.reason}
-          footerNote="Go to the Gallery Wall to view this frame."
-        />
-      )}
-    </>
+
+      <RealFrameRewardGate frame={newlyUnlockedFrame} reward={newlyUnlockedReward} onDismiss={dismissTop} />
+    </OnboardingProvider>
+  );
+}
+
+// The real "you unlocked a frame for real" celebration (see
+// useFrameUnlockQueue) is suppressed while the guided tour is showing,
+// so a user never sees a frame-unlock modal fighting with the tour.
+function RealFrameRewardGate({
+  frame,
+  reward,
+  onDismiss,
+}: {
+  frame: FrameUnlock | null;
+  reward: (typeof FRAME_REWARDS)[keyof typeof FRAME_REWARDS] | null | undefined;
+  onDismiss: () => void;
+}) {
+  const onboarding = useOnboarding();
+  if (!frame || !reward || onboarding.active) return null;
+
+  return (
+    <FrameRewardModal
+      visible
+      onDismiss={onDismiss}
+      frameSource={reward.source}
+      heading="New frame unlocked!"
+      message={frame.reason}
+      footerNote="Go to the Gallery Wall to view this frame."
+    />
   );
 }

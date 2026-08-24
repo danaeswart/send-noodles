@@ -1,4 +1,4 @@
-﻿import { useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import PagerView from "react-native-pager-view";
 import { View, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import ProfileScreen from "../screens/ProfileScreen";
 import SquareMark from "../components/SquareMark";
 import TopSwipeNavigator from "../components/TopSwipeNavigator";
 import { colors } from "../constants/theme";
+import { useOnboarding } from "../onboarding/OnboardingContext";
 
 const SNAP_PAGE_INDEX = 3;
 
@@ -36,11 +37,23 @@ export default function SwipeNavigator() {
   const insets = useSafeAreaInsets();
   const scrollPosition = useSharedValue(2);
   const pagerRef = useRef<PagerView>(null);
+  const onboarding = useOnboarding();
 
   const handleLongPressCapture = (circleId: string) => {
     setPreselectedCircleId(circleId);
     pagerRef.current?.setPage(SNAP_PAGE_INDEX);
   };
+
+  // The tour drives its own panel changes (see OnboardingContext.start /
+  // advance) rather than relying on the user swiping — every step
+  // transition, including the very first one, arrives here as a jump
+  // request. Still an animated pager.setPage transition, not a hard cut.
+  useEffect(() => {
+    if (onboarding.panelJumpRequest === null) return;
+    pagerRef.current?.setPage(onboarding.panelJumpRequest);
+    onboarding.clearPanelJumpRequest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboarding.panelJumpRequest]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.paper }}>
@@ -49,6 +62,10 @@ export default function SwipeNavigator() {
         style={styles.pagerView}
         initialPage={2}
         orientation="horizontal"
+        // Locked to the tour's own "Next" button while it's running, so
+        // the popup and the panel it's describing can't drift out of
+        // sync with a stray swipe.
+        scrollEnabled={!onboarding.active}
         onPageSelected={(e) => setActiveIndex(e.nativeEvent.position)}
         onPageScroll={(e) => {
           scrollPosition.value = e.nativeEvent.position + e.nativeEvent.offset;

@@ -9,11 +9,13 @@ import FloatingIllustration from "../../components/auth/FloatingIllustration";
 import AuthTextField from "../../components/auth/AuthTextField";
 import AuthButton from "../../components/auth/AuthButton";
 import { signUpWithEmail } from "../../../firebase/auth";
+import { useOnboarding } from "../../onboarding/OnboardingContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, "SignUp">;
 
 export default function SignUpScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const onboarding = useOnboarding();
   const [firstName, setFirstName] = useState("");
   const [surname, setSurname] = useState("");
   const [email, setEmail] = useState("");
@@ -30,7 +32,10 @@ export default function SignUpScreen({ navigation }: Props) {
       await signUpWithEmail(email.trim(), password, firstName.trim(), surname.trim());
       // No manual navigation here — RootNavigator swaps to the signed-in
       // screen group on its own once useAuthUser picks up the new
-      // session (see RootNavigator.tsx).
+      // session (see RootNavigator.tsx). Starting the tour here, right
+      // after a brand-new account is created, is the only place it ever
+      // auto-starts — an ordinary login never touches this.
+      onboarding.start();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't create your account. Try again.");
     } finally {
