@@ -8,14 +8,14 @@ import type { FrameUnlock } from "../../firebase/types";
 // the mechanism behind the full-screen "new frame unlocked!" celebration
 // (FrameRewardModal, mounted from RootNavigator). Neither recordSnapSent
 // nor awardChallengeRewards (firebase/users.ts, firebase/challenges.ts)
-// need to know this UI exists — they just append to frameUnlocks, and
+// need to know this UI exists - they just append to frameUnlocks, and
 // this hook reacts to the diff on the owner's own real-time listener.
 // That also makes it work for a challenge-completion frame, even though
 // the write granting it can come from a teammate's client racing to the
 // transaction first.
 //
 // The very first snapshot after mount/sign-in only sets the baseline, so
-// frames the user already had don't re-trigger the popup — an unlock
+// frames the user already had don't re-trigger the popup - an unlock
 // granted while the app was closed is picked up silently instead (no
 // popup), same as any other profile change they missed while away.
 export function useFrameUnlockQueue(userId: string | null) {

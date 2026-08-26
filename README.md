@@ -3,10 +3,6 @@
 
 # Send Noodles
 
-A social app for small friend groups, called "circles", designed to pull you out of the constant noise and into the moment. Daily challenges give you a reason to pause, be present, and experience something with your friends. Snap a photo, share the moment, challenge your friends, and build your shared gallery wall together.
-
-Complete challenges to unlock frames, send noodles, collect memories, and discover more ways to connect. It is about taking a moment away from everything trying to get your attention and actually being there for it.
-
 ## Contents
 
 - [Features](#features)
@@ -20,6 +16,10 @@ Complete challenges to unlock frames, send noodles, collect memories, and discov
 - [Key Concepts](#key-concepts)
 - [Notes](#notes)
 - [Acknowledgements](#acknowledgements)
+
+
+   ![Send Noodles banner](/send-noodles/readme-assets/app-summary.png)
+
 
 ## Features
 
@@ -40,6 +40,8 @@ Complete challenges to unlock frames, send noodles, collect memories, and discov
    ![Send Noodles banner](/send-noodles/readme-assets/1.png)
 
  
+   ![Send Noodles banner](/send-noodles/readme-assets/smart-obj.png)
+
 
 ## Diagrams
 
