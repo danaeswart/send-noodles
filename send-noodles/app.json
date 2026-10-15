@@ -38,7 +38,8 @@
         {
           "motionPermission": "Allow $(PRODUCT_NAME) to access your device motion to detect a shake."
         }
-      ]
+      ],
+      "expo-status-bar"
     ]
   }
 }

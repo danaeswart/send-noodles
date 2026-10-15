@@ -65,7 +65,7 @@ export default function PopupCard({ title, body, stepIndex, stepCount, isLastSte
 }
 
 const styles = StyleSheet.create({
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.ink },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: colors.ink },
   centerWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.xl },
   card: {
     width: "100%",

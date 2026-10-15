@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   },
 
   chromeLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 10,
     elevation: 10,
   },

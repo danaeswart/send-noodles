@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ImageSourcePropType, ViewStyle } from "react-native";
+import { ImageSourcePropType, ImageStyle } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -18,7 +18,7 @@ type Props = {
   duration?: number; // one-way duration in ms
   delay?: number; // stagger so shapes don't move in lockstep
   spin?: number; // max tilt in degrees, each direction
-  style?: ViewStyle;
+  style?: ImageStyle;
 };
 
 // Gently bobbing/tilting illustration art. Picks a random image from
@@ -69,10 +69,9 @@ export default function FloatingIllustration({
 
   return (
     <Animated.Image
-      pointerEvents="none"
       source={imageSource}
       resizeMode="contain"
-      style={[{ width: size, height: size }, animatedStyle, style]}
+      style={[{ width: size, height: size, pointerEvents: "none" } as ImageStyle, animatedStyle, style]}
     />
   );
 }

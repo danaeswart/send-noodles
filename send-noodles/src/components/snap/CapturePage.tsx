@@ -167,8 +167,8 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.paper, paddingHorizontal: spacing.lg, justifyContent: "space-between" },
   cardWrap: { flex: 1, justifyContent: "center" },
   cardGroup: { alignSelf: "center", width: "84%" },
-  dimScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.ink, opacity: 0.5 },
-  blankCover: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.paper },
+  dimScrim: { ...StyleSheet.absoluteFill, backgroundColor: colors.ink, opacity: 0.5 },
+  blankCover: { ...StyleSheet.absoluteFill, backgroundColor: colors.paper },
   flipButtonWrap: { position: "absolute", top: -18, left: 0, right: 0, alignItems: "center" },
   flipButton: {
     flexDirection: "row",
